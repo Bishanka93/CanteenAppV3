@@ -50,7 +50,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                 },
                 label = { Text("Roll No") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium
             )
