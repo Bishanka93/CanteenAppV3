@@ -20,21 +20,41 @@ import androidx.compose.ui.unit.dp
 fun CartScreen(
     modifier: Modifier = Modifier,
     cartItems: List<CartItem>,
-    onConfirmOrder: () -> Int,
+    onConfirmOrder: (String, List<CartItem>) -> Int,
     onDone: () -> Unit
 ) {
     var cartStep by remember { mutableIntStateOf(1) }
     var orderToken by remember { mutableIntStateOf(0) }
 
+    // Group items by canteenId
+    val groupedItems = remember(cartItems) {
+        cartItems.groupBy { it.foodItem.canteenId }
+    }
+    
+    val canteensInCart = remember(groupedItems) {
+        groupedItems.keys.mapNotNull { id -> Database.canteens.find { it.id == id } }
+    }
+
+    var selectedCanteenId by remember(canteensInCart) {
+        mutableIntStateOf(canteensInCart.firstOrNull()?.id ?: -1)
+    }
+
+    val selectedCanteenItems = groupedItems[selectedCanteenId] ?: emptyList()
+    val selectedCanteenName = canteensInCart.find { it.id == selectedCanteenId }?.name ?: ""
+
     when (cartStep) {
         1 -> CartItemsLayout(
             items = cartItems,
+            groupedItems = groupedItems,
+            canteensInCart = canteensInCart,
+            selectedCanteenId = selectedCanteenId,
+            onCanteenSelect = { selectedCanteenId = it },
             onContinue = { cartStep = 2 },
             modifier = modifier
         )
         2 -> ConfirmationLayout(
             onConfirm = { 
-                orderToken = onConfirmOrder()
+                orderToken = onConfirmOrder(selectedCanteenName, selectedCanteenItems)
                 cartStep = 3 
             },
             onBack = { cartStep = 1 },
@@ -52,13 +72,18 @@ fun CartScreen(
 @Composable
 fun CartItemsLayout(
     items: List<CartItem>,
+    groupedItems: Map<Int, List<CartItem>>,
+    canteensInCart: List<Canteen>,
+    selectedCanteenId: Int,
+    onCanteenSelect: (Int) -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val totalPrice = items.sumOf { it.foodItem.price * it.quantity }
+    val selectedItems = groupedItems[selectedCanteenId] ?: emptyList()
+    val totalPrice = selectedItems.sumOf { it.foodItem.price * it.quantity }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Selected Items", fontWeight = FontWeight.Bold) }) },
+        topBar = { TopAppBar(title = { Text("Your Cart", fontWeight = FontWeight.Bold) }) },
         modifier = modifier
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
@@ -90,8 +115,31 @@ fun CartItemsLayout(
                     )
                 }
             } else {
+                if (canteensInCart.size > 1) {
+                    Text(
+                        text = "Select Canteen to Order From:",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    ScrollableTabRow(
+                        selectedTabIndex = canteensInCart.indexOfFirst { it.id == selectedCanteenId }.coerceAtLeast(0),
+                        edgePadding = 0.dp,
+                        containerColor = Color.Transparent,
+                        divider = {}
+                    ) {
+                        canteensInCart.forEach { canteen ->
+                            Tab(
+                                selected = selectedCanteenId == canteen.id,
+                                onClick = { onCanteenSelect(canteen.id) },
+                                text = { Text(canteen.name) }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(items) { item ->
+                    items(selectedItems) { item ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -115,38 +163,49 @@ fun CartItemsLayout(
                         }
                     }
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Price", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Rs ${String.format("%.2f", totalPrice)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Subtotal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Rs ${String.format("%.2f", totalPrice)}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        val canteenName = canteensInCart.find { it.id == selectedCanteenId }?.name ?: ""
+                        Text("Canteen: $canteenName", style = MaterialTheme.typography.bodyMedium)
                     }
-                    Text("Time Schedule: Now", style = MaterialTheme.typography.bodyMedium)
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = onContinue, 
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                enabled = items.isNotEmpty(),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Text("Continue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = onContinue, 
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    enabled = selectedItems.isNotEmpty(),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text("Continue with this Order", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+
+                if (canteensInCart.size > 1) {
+                    Text(
+                        text = "Note: You have items from other canteens. You can order them separately.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
     }

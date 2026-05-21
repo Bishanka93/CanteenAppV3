@@ -1,5 +1,6 @@
 package com.example.canteenappv2.ui
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,16 +11,17 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 
 @Composable
 fun CanteensScreen(
@@ -74,22 +76,17 @@ fun CanteenListLayout(
     onCanteenClick: (Canteen) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredCanteens = canteens.filter { it.name.contains(searchQuery, ignoreCase = true) }
-
     Scaffold(
         topBar = { TopAppBar(title = { Text("Canteens", fontWeight = FontWeight.Bold) }) },
         modifier = modifier
     ) { padding ->
-        Column(modifier = Modifier.padding(padding)) {
-
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filteredCanteens) { canteen ->
-                    CanteenWidget(canteen = canteen, onClick = { onCanteenClick(canteen) })
-                }
+        LazyColumn(
+            modifier = Modifier.padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(canteens) { canteen ->
+                CanteenWidget(canteen = canteen, onClick = { onCanteenClick(canteen) })
             }
         }
     }
@@ -131,9 +128,6 @@ fun FoodListLayout(
     onFoodClick: (FoodItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredFoodItems = foodItems.filter { it.name.contains(searchQuery, ignoreCase = true) }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -158,22 +152,13 @@ fun FoodListLayout(
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.primary
             )
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                placeholder = { Text("Search Food in ${canteen.name}") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                shape = MaterialTheme.shapes.medium
-            )
+            Spacer(modifier = Modifier.height(8.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(8.dp)
             ) {
-                items(filteredFoodItems) { foodItem ->
+                items(foodItems) { foodItem ->
                     FoodIconItem(foodItem = foodItem, onClick = { onFoodClick(foodItem) })
                 }
             }
@@ -183,14 +168,25 @@ fun FoodListLayout(
 
 @Composable
 fun FoodIconItem(foodItem: FoodItem, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val imageModel = remember(foodItem.imageName) {
+        if (foodItem.imageName?.startsWith("content://") == true) {
+            Uri.parse(foodItem.imageName)
+        } else {
+            val resId = context.resources.getIdentifier(foodItem.imageName, "drawable", context.packageName)
+            if (resId != 0) resId else null
+        }
+    }
+
     Card(
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clickable(enabled = foodItem.isAvailable) { onClick() },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (foodItem.isAvailable) MaterialTheme.colorScheme.surfaceVariant
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
         )
     ) {
         Column {
@@ -201,22 +197,54 @@ fun FoodIconItem(foodItem: FoodItem, onClick: () -> Unit) {
                     .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "No image found", 
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                if (imageModel != null) {
+                    AsyncImage(
+                        model = imageModel,
+                        contentDescription = foodItem.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        "No image found", 
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+
+                if (!foodItem.isAvailable) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.error,
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                "OUT OF STOCK",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onError,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = foodItem.name, 
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = if (foodItem.isAvailable) Color.Unspecified else Color.Gray
                 )
                 Text(
                     text = "Rs ${foodItem.price}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (foodItem.isAvailable) MaterialTheme.colorScheme.primary else Color.Gray,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -234,6 +262,15 @@ fun FoodDetailsLayout(
     modifier: Modifier = Modifier
 ) {
     var quantity by remember { mutableIntStateOf(if (initialQuantity == 0) 1 else initialQuantity) }
+    val context = LocalContext.current
+    val imageModel = remember(foodItem.imageName) {
+        if (foodItem.imageName?.startsWith("content://") == true) {
+            Uri.parse(foodItem.imageName)
+        } else {
+            val resId = context.resources.getIdentifier(foodItem.imageName, "drawable", context.packageName)
+            if (resId != 0) resId else null
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -262,7 +299,16 @@ fun FoodDetailsLayout(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No image found", style = MaterialTheme.typography.bodyLarge)
+                    if (imageModel != null) {
+                        AsyncImage(
+                            model = imageModel,
+                            contentDescription = foodItem.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text("No image found", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -280,42 +326,62 @@ fun FoodDetailsLayout(
             
             Spacer(modifier = Modifier.height(32.dp))
             
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.wrapContentSize()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(8.dp)
+            if (foodItem.isAvailable) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.wrapContentSize()
                 ) {
-                    IconButton(onClick = { if (quantity > 0) quantity-- }) {
-                        Text("-", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
-                    Text(
-                        text = quantity.toString(),
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = { quantity++ }) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        IconButton(onClick = { if (quantity > 1) quantity-- }) {
+                            Text("-", style = MaterialTheme.typography.headlineSmall)
+                        }
+                        Text(
+                            text = quantity.toString(),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                        IconButton(onClick = { quantity++ }) {
+                            Text("+", style = MaterialTheme.typography.headlineSmall)
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                onClick = { onAddToCart(quantity) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = MaterialTheme.shapes.large
-            ) {
+                Spacer(modifier = Modifier.weight(1f))
+
+                Button(
+                    onClick = { onAddToCart(quantity) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        text = if (initialQuantity > 0) "Update Cart" else "Add to Cart",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(32.dp))
                 Text(
-                    if (quantity == 0) "Remove from Cart" else "Update Cart",
-                    style = MaterialTheme.typography.titleMedium,
+                    "Currently Out of Stock",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Go Back")
+                }
             }
         }
     }

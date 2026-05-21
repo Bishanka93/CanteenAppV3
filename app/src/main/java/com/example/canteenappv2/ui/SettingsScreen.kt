@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    rollNo: String,
+    user: User,
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
     onLogout: () -> Unit
@@ -52,16 +52,16 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            "Student Profile", 
-                            style = MaterialTheme.typography.titleMedium,
+                            user.name, 
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            "Roll No: $rollNo", 
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            "Roll No: ${user.rollNo}", 
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
                     }
                 }

@@ -32,9 +32,39 @@ class MainActivity : ComponentActivity() {
         val settingsPref = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val authPref = getSharedPreferences("auth", Context.MODE_PRIVATE)
         
+        fun loadUsers(): List<User> {
+            val usersStr = authPref.getString("all_users", null) ?: return listOf(
+                User("Bishanka Sarma", "DC2024BTE0093", "12345"),
+                User("Canteen Manager", "STAFF_A", "admin123", isStaff = true, canteenId = 1)
+            )
+            return usersStr.split("|").filter { it.isNotBlank() }.mapNotNull {
+                val parts = it.split(";")
+                if (parts.size >= 3) {
+                    User(
+                        parts[0], 
+                        parts[1], 
+                        parts[2], 
+                        isStaff = parts.getOrNull(3)?.toBoolean() ?: false,
+                        canteenId = parts.getOrNull(4)?.toIntOrNull()
+                    )
+                } else null
+            }
+        }
+
+        fun saveUsers(users: List<User>) {
+            val usersStr = users.joinToString("|") { 
+                "${it.name};${it.rollNo};${it.password};${it.isStaff};${it.canteenId ?: ""}" 
+            }
+            authPref.edit().putString("all_users", usersStr).apply()
+        }
+
         setContent {
-            var rollNo by remember { 
-                mutableStateOf(authPref.getString("roll_no", null)) 
+            var usersList by remember { mutableStateOf(loadUsers()) }
+            
+            var currentUser by remember { 
+                val rollNo = authPref.getString("roll_no", null)
+                val initialUser = usersList.find { it.rollNo == rollNo }
+                mutableStateOf(initialUser)
             }
             
             var darkThemePreference by remember { 
@@ -50,24 +80,57 @@ class MainActivity : ComponentActivity() {
             val useDarkTheme = darkThemePreference ?: isSystemInDarkTheme()
 
             CanteenAppV2Theme(darkTheme = useDarkTheme) {
-                if (rollNo == null) {
-                    LoginScreen(onLoginSuccess = { loggedInRollNo ->
-                        rollNo = loggedInRollNo
-                        authPref.edit().putString("roll_no", loggedInRollNo).apply()
-                    })
+                if (currentUser == null) {
+                    var showSignUp by remember { mutableStateOf(false) }
+                    if (showSignUp) {
+                        SignUpScreen(
+                            onSignUpSuccess = { signedUpRollNo, name, password ->
+                                val newUser = User(name, signedUpRollNo, password)
+                                usersList = usersList + newUser
+                                saveUsers(usersList)
+                                currentUser = newUser
+                                authPref.edit().putString("roll_no", signedUpRollNo).apply()
+                            },
+                            onNavigateToLogin = { showSignUp = false }
+                        )
+                    } else {
+                        LoginScreen(
+                            onLoginSuccess = { loggedInRollNo, _ ->
+                                currentUser = usersList.find { it.rollNo == loggedInRollNo }
+                                authPref.edit().putString("roll_no", loggedInRollNo).apply()
+                            },
+                            onNavigateToSignUp = { showSignUp = true },
+                            users = usersList
+                        )
+                    }
                 } else {
-                    CanteenAppV2App(
-                        rollNo = rollNo!!,
-                        darkTheme = useDarkTheme,
-                        onDarkThemeChange = { isDark -> 
-                            darkThemePreference = isDark
-                            settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                        },
-                        onLogout = {
-                            rollNo = null
-                            authPref.edit().remove("roll_no").apply()
-                        }
-                    )
+                    if (currentUser!!.isStaff) {
+                        StaffApp(
+                            user = currentUser!!,
+                            darkTheme = useDarkTheme,
+                            onDarkThemeChange = { isDark -> 
+                                darkThemePreference = isDark
+                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                            },
+                            onLogout = {
+                                currentUser = null
+                                authPref.edit().remove("roll_no").apply()
+                            }
+                        )
+                    } else {
+                        CanteenAppV2App(
+                            user = currentUser!!,
+                            darkTheme = useDarkTheme,
+                            onDarkThemeChange = { isDark -> 
+                                darkThemePreference = isDark
+                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                            },
+                            onLogout = {
+                                currentUser = null
+                                authPref.edit().remove("roll_no").apply()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -76,17 +139,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CanteenAppV2App(
-    rollNo: String,
+    user: User,
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.CANTEENS) }
     var cartItems by remember { mutableStateOf(listOf<CartItem>()) }
-    var orders by remember { mutableStateOf(listOf<OrderItem>()) }
-    var nextToken by remember { mutableIntStateOf(101) }
+    val orders = Database.orders
     
-    // Persistent canteen selection for the first tab
     var persistentSelectedCanteen by remember { mutableStateOf<Canteen?>(null) }
     var persistentSelectedFoodItem by remember { mutableStateOf<FoodItem?>(null) }
 
@@ -103,15 +164,15 @@ fun CanteenAppV2App(
         }
     }
 
-    fun confirmOrder(): Int {
-        val token = nextToken++
+    fun confirmOrder(canteenName: String, items: List<CartItem>): Int {
+        val token = Database.getNextToken()
         val newOrder = OrderItem(
             token = token,
-            items = cartItems.toList(),
-            canteenName = persistentSelectedCanteen?.name ?: "Unknown Canteen"
+            items = items,
+            canteenName = canteenName
         )
-        orders = orders + newOrder
-        cartItems = emptyList()
+        Database.orders.add(newOrder)
+        cartItems = cartItems.filter { it.foodItem.canteenId != items.first().foodItem.canteenId }
         return token
     }
 
@@ -119,12 +180,7 @@ fun CanteenAppV2App(
         navigationSuiteItems = {
             AppDestinations.entries.forEach {
                 item(
-                    icon = {
-                        Icon(
-                            it.icon,
-                            contentDescription = it.label
-                        )
-                    },
+                    icon = { Icon(it.icon, contentDescription = it.label) },
                     label = { Text(it.label) },
                     selected = it == currentDestination,
                     onClick = { currentDestination = it }
@@ -147,9 +203,7 @@ fun CanteenAppV2App(
                     modifier = Modifier.padding(innerPadding),
                     cartItems = cartItems,
                     onConfirmOrder = ::confirmOrder,
-                    onDone = {
-                        currentDestination = AppDestinations.CANTEENS
-                    }
+                    onDone = { currentDestination = AppDestinations.CANTEENS }
                 )
                 AppDestinations.WAITLIST -> WaitlistScreen(
                     modifier = Modifier.padding(innerPadding),
@@ -157,7 +211,7 @@ fun CanteenAppV2App(
                 )
                 AppDestinations.SETTINGS -> SettingsScreen(
                     modifier = Modifier.padding(innerPadding),
-                    rollNo = rollNo,
+                    user = user,
                     darkTheme = darkTheme,
                     onDarkThemeChange = onDarkThemeChange,
                     onLogout = onLogout
@@ -167,10 +221,7 @@ fun CanteenAppV2App(
     }
 }
 
-enum class AppDestinations(
-    val label: String,
-    val icon: ImageVector,
-) {
+enum class AppDestinations(val label: String, val icon: ImageVector) {
     CANTEENS("Canteens", Icons.Default.Home),
     CART("Cart", Icons.Default.ShoppingCart),
     WAITLIST("Waitlist", Icons.AutoMirrored.Filled.List),

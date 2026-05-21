@@ -3,8 +3,6 @@ package com.example.canteenappv2.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -14,38 +12,21 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WaitlistScreen(modifier: Modifier = Modifier, orders: List<OrderItem>) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredOrders = orders.filter { order ->
-        order.token.toString().contains(searchQuery) ||
-                order.canteenName.contains(searchQuery, ignoreCase = true) ||
-                order.items.any { it.foodItem.name.contains(searchQuery, ignoreCase = true) }
-    }
-
     Scaffold(
         topBar = { TopAppBar(title = { Text("Wait List", fontWeight = FontWeight.Bold) }) },
         modifier = modifier
     ) { padding ->
-        Column(modifier = Modifier.padding(padding)) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                placeholder = { Text("Search by Token, Canteen, or Food") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                shape = MaterialTheme.shapes.medium
-            )
-            LazyColumn(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                reverseLayout = true // Pile from bottom up
-            ) {
-                items(filteredOrders) { order ->
-                    OrderWidget(order)
-                }
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            reverseLayout = true // Pile from bottom up
+        ) {
+            items(orders) { order ->
+                OrderWidget(order)
             }
         }
     }
@@ -85,6 +66,7 @@ fun OrderWidget(order: OrderItem) {
                         OrderStatus.PENDING -> MaterialTheme.colorScheme.errorContainer
                         OrderStatus.PREPARING -> MaterialTheme.colorScheme.secondaryContainer
                         OrderStatus.READY -> MaterialTheme.colorScheme.primaryContainer
+                        OrderStatus.COMPLETED -> MaterialTheme.colorScheme.surfaceContainerHighest
                     }
                 ) {
                     Text(
@@ -96,6 +78,7 @@ fun OrderWidget(order: OrderItem) {
                             OrderStatus.PENDING -> MaterialTheme.colorScheme.onErrorContainer
                             OrderStatus.PREPARING -> MaterialTheme.colorScheme.onSecondaryContainer
                             OrderStatus.READY -> MaterialTheme.colorScheme.onPrimaryContainer
+                            OrderStatus.COMPLETED -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
                 }
