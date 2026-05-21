@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
         
         fun loadUsers(): List<User> {
             val usersStr = authPref.getString("all_users", null) ?: return listOf(
-                User("Bishanka Sarma", "DC2024BTE0093", "12345"),
+                User("Walter White", "DC2024BTE0093", "12345"),
                 User("Canteen Manager", "STAFF_A", "admin123", isStaff = true, canteenId = 1)
             )
             return usersStr.split("|").filter { it.isNotBlank() }.mapNotNull {
