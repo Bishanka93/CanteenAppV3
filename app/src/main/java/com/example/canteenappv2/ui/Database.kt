@@ -3,7 +3,7 @@ package com.example.canteenappv2.ui
 import androidx.compose.runtime.mutableStateListOf
 
 object Database {
-    val canteens = listOf(
+    val canteens = mutableStateListOf(
         Canteen(1, "Canteen A"),
         Canteen(2, "Canteen B")
     )
@@ -15,6 +15,12 @@ object Database {
         FoodItem(4, "Veg Thali", 70.0, 2, "veg_thali"),
         FoodItem(5, "Masala Dosa", 90.0, 2, "masala_dosa"),
         FoodItem(6, "Chicken Thali", 100.0, 2, "chicken_thali")
+    )
+    
+    val users = mutableStateListOf(
+        User("Walter White", "DC2024BTE0093", "12345"),
+        User("Canteen Manager", "STAFF_A", "admin123", isStaff = true, canteenId = 1),
+        User("Main Admin", "ADMIN", "admin123", isAdmin = true)
     )
 
     val orders = mutableStateListOf<OrderItem>()

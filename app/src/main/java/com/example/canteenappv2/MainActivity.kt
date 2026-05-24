@@ -32,12 +32,10 @@ class MainActivity : ComponentActivity() {
         val settingsPref = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val authPref = getSharedPreferences("auth", Context.MODE_PRIVATE)
         
-        fun loadUsers(): List<User> {
-            val usersStr = authPref.getString("all_users", null) ?: return listOf(
-                User("Walter White", "DC2024BTE0093", "12345"),
-                User("Canteen Manager", "STAFF_A", "admin123", isStaff = true, canteenId = 1)
-            )
-            return usersStr.split("|").filter { it.isNotBlank() }.mapNotNull {
+        // Load users into Database on startup
+        val usersStr = authPref.getString("all_users", null)
+        if (usersStr != null) {
+            val loadedUsers = usersStr.split("|").filter { it.isNotBlank() }.mapNotNull {
                 val parts = it.split(";")
                 if (parts.size >= 3) {
                     User(
@@ -45,25 +43,28 @@ class MainActivity : ComponentActivity() {
                         parts[1], 
                         parts[2], 
                         isStaff = parts.getOrNull(3)?.toBoolean() ?: false,
+                        isAdmin = parts.getOrNull(5)?.toBoolean() ?: false,
                         canteenId = parts.getOrNull(4)?.toIntOrNull()
                     )
                 } else null
             }
+            if (loadedUsers.isNotEmpty()) {
+                Database.users.clear()
+                Database.users.addAll(loadedUsers)
+            }
         }
 
-        fun saveUsers(users: List<User>) {
-            val usersStr = users.joinToString("|") { 
-                "${it.name};${it.rollNo};${it.password};${it.isStaff};${it.canteenId ?: ""}" 
+        fun saveUsers() {
+            val usersStr = Database.users.joinToString("|") { 
+                "${it.name};${it.rollNo};${it.password};${it.isStaff};${it.canteenId ?: ""};${it.isAdmin}" 
             }
             authPref.edit().putString("all_users", usersStr).apply()
         }
 
         setContent {
-            var usersList by remember { mutableStateOf(loadUsers()) }
-            
             var currentUser by remember { 
                 val rollNo = authPref.getString("roll_no", null)
-                val initialUser = usersList.find { it.rollNo == rollNo }
+                val initialUser = Database.users.find { it.rollNo == rollNo }
                 mutableStateOf(initialUser)
             }
             
@@ -86,8 +87,8 @@ class MainActivity : ComponentActivity() {
                         SignUpScreen(
                             onSignUpSuccess = { signedUpRollNo, name, password ->
                                 val newUser = User(name, signedUpRollNo, password)
-                                usersList = usersList + newUser
-                                saveUsers(usersList)
+                                Database.users.add(newUser)
+                                saveUsers()
                                 currentUser = newUser
                                 authPref.edit().putString("roll_no", signedUpRollNo).apply()
                             },
@@ -96,42 +97,64 @@ class MainActivity : ComponentActivity() {
                     } else {
                         LoginScreen(
                             onLoginSuccess = { loggedInRollNo, _ ->
-                                currentUser = usersList.find { it.rollNo == loggedInRollNo }
+                                currentUser = Database.users.find { it.rollNo == loggedInRollNo }
                                 authPref.edit().putString("roll_no", loggedInRollNo).apply()
                             },
                             onNavigateToSignUp = { showSignUp = true },
-                            users = usersList
+                            users = Database.users
                         )
                     }
                 } else {
-                    if (currentUser!!.isStaff) {
-                        StaffApp(
-                            user = currentUser!!,
-                            darkTheme = useDarkTheme,
-                            onDarkThemeChange = { isDark -> 
-                                darkThemePreference = isDark
-                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                            },
-                            onLogout = {
-                                currentUser = null
-                                authPref.edit().remove("roll_no").apply()
-                            }
-                        )
-                    } else {
-                        CanteenAppV2App(
-                            user = currentUser!!,
-                            darkTheme = useDarkTheme,
-                            onDarkThemeChange = { isDark -> 
-                                darkThemePreference = isDark
-                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                            },
-                            onLogout = {
-                                currentUser = null
-                                authPref.edit().remove("roll_no").apply()
-                            }
-                        )
+                    when {
+                        currentUser!!.isAdmin -> {
+                            AdminApp(
+                                user = currentUser!!,
+                                darkTheme = useDarkTheme,
+                                onDarkThemeChange = { isDark -> 
+                                    darkThemePreference = isDark
+                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                },
+                                onLogout = {
+                                    currentUser = null
+                                    authPref.edit().remove("roll_no").apply()
+                                }
+                            )
+                        }
+                        currentUser!!.isStaff -> {
+                            StaffApp(
+                                user = currentUser!!,
+                                darkTheme = useDarkTheme,
+                                onDarkThemeChange = { isDark -> 
+                                    darkThemePreference = isDark
+                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                },
+                                onLogout = {
+                                    currentUser = null
+                                    authPref.edit().remove("roll_no").apply()
+                                }
+                            )
+                        }
+                        else -> {
+                            CanteenAppV2App(
+                                user = currentUser!!,
+                                darkTheme = useDarkTheme,
+                                onDarkThemeChange = { isDark -> 
+                                    darkThemePreference = isDark
+                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                },
+                                onLogout = {
+                                    currentUser = null
+                                    authPref.edit().remove("roll_no").apply()
+                                }
+                            )
+                        }
                     }
                 }
+            }
+            
+            // Auto-save users whenever the list changes (optional but good for this structure)
+            LaunchedEffect(Database.users.size) {
+                saveUsers()
             }
         }
     }

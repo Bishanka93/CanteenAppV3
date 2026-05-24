@@ -1,13 +1,13 @@
 package com.example.canteenappv2.ui
 
-data class Canteen(val id: Int, val name: String)
+data class Canteen(val id: Int, var name: String)
 
 data class FoodItem(
     val id: Int,
-    val name: String,
+    var name: String,
     var price: Double,
     val canteenId: Int,
-    val imageName: String? = null,
+    var imageName: String? = null,
     var isAvailable: Boolean = true
 )
 
@@ -29,5 +29,6 @@ data class User(
     val rollNo: String,
     val password: String,
     val isStaff: Boolean = false,
+    val isAdmin: Boolean = false,
     val canteenId: Int? = null
 )
