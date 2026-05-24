@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.example.canteenappv2.database.MySQLDatabase
 
 @Composable
 fun CanteensScreen(
@@ -33,8 +34,14 @@ fun CanteensScreen(
     selectedFoodItem: FoodItem?,
     onFoodItemSelected: (FoodItem?) -> Unit
 ) {
-    val canteens = Database.canteens
-    val foodItems = Database.foodItems
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    var foodItems by remember { mutableStateOf<List<FoodItem>>(emptyList()) }
+
+    // LaunchedEffect already runs in a coroutine scope — no need for scope.launch inside
+    LaunchedEffect(Unit) {
+        canteens = MySQLDatabase.getAllCanteens()
+        foodItems = MySQLDatabase.getAllFoodItems()
+    }
 
     when {
         selectedFoodItem != null -> {
@@ -43,7 +50,7 @@ fun CanteensScreen(
                 foodItem = selectedFoodItem,
                 initialQuantity = initialQuantity,
                 onBack = { onFoodItemSelected(null) },
-                onAddToCart = { qty -> 
+                onAddToCart = { qty ->
                     onAddToCart(selectedFoodItem, qty)
                     onFoodItemSelected(null)
                 },
@@ -98,9 +105,7 @@ fun CanteenWidget(canteen: Canteen, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(
@@ -186,7 +191,7 @@ fun FoodIconItem(foodItem: FoodItem, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (foodItem.isAvailable) MaterialTheme.colorScheme.surfaceVariant
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
         )
     ) {
         Column {
@@ -206,7 +211,7 @@ fun FoodIconItem(foodItem: FoodItem, onClick: () -> Unit) {
                     )
                 } else {
                     Text(
-                        "No image found", 
+                        "No image found",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -236,7 +241,7 @@ fun FoodIconItem(foodItem: FoodItem, onClick: () -> Unit) {
             }
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
-                    text = foodItem.name, 
+                    text = foodItem.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (foodItem.isAvailable) Color.Unspecified else Color.Gray
@@ -313,7 +318,7 @@ fun FoodDetailsLayout(
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = foodItem.name, 
+                text = foodItem.name,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -323,9 +328,8 @@ fun FoodDetailsLayout(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
-            
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             if (foodItem.isAvailable) {
                 Surface(
                     shape = MaterialTheme.shapes.medium,
@@ -349,9 +353,7 @@ fun FoodDetailsLayout(
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.weight(1f))
-
                 Button(
                     onClick = { onAddToCart(quantity) },
                     modifier = Modifier

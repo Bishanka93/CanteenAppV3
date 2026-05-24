@@ -50,6 +50,12 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network)
 
+    // MySQL Driver - Downgraded to 5.1.49 for Android compatibility (avoids NoClassDefFoundError: SQLType)
+    implementation("mysql:mysql-connector-java:5.1.49")
+    
+    // For coroutines and async database operations
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

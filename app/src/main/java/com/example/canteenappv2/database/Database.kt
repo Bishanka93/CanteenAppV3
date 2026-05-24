@@ -1,6 +1,10 @@
-package com.example.canteenappv2.ui
+package com.example.canteenappv2.database
 
 import androidx.compose.runtime.mutableStateListOf
+import com.example.canteenappv2.ui.Canteen
+import com.example.canteenappv2.ui.FoodItem
+import com.example.canteenappv2.ui.OrderItem
+import com.example.canteenappv2.ui.User
 
 object Database {
     val canteens = mutableStateListOf(

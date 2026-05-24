@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.canteenappv2.database.MySQLDatabase
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3AdaptiveNavigationSuiteApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -62,43 +64,75 @@ fun AdminApp(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Canteens
+// ---------------------------------------------------------------------------
+
 @Composable
 fun AdminCanteensScreen() {
+    val scope = rememberCoroutineScope()
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
     var editingCanteen by remember { mutableStateOf<Canteen?>(null) }
 
+    // Load canteens from MySQL
+    LaunchedEffect(Unit) {
+        canteens = MySQLDatabase.getAllCanteens()
+        isLoading = false
+    }
+
+    fun refresh() {
+        scope.launch {
+            isLoading = true
+            canteens = MySQLDatabase.getAllCanteens()
+            isLoading = false
+        }
+    }
+
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { 
+            FloatingActionButton(onClick = {
                 editingCanteen = null
-                showDialog = true 
+                showDialog = true
             }) {
                 Icon(Icons.Default.Add, contentDescription = "Add Canteen")
             }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(Database.canteens) { canteen ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(canteen.name, style = MaterialTheme.typography.titleMedium)
-                        Row {
-                            IconButton(onClick = { 
-                                editingCanteen = canteen
-                                showDialog = true 
-                            }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit")
-                            }
-                            IconButton(onClick = { Database.canteens.remove(canteen) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
+        if (isLoading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.padding(padding).fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(canteens) { canteen ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(canteen.name, style = MaterialTheme.typography.titleMedium)
+                            Row {
+                                IconButton(onClick = {
+                                    editingCanteen = canteen
+                                    showDialog = true
+                                }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        MySQLDatabase.deleteCanteen(canteen.id)
+                                        refresh()
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                }
                             }
                         }
                     }
@@ -109,15 +143,18 @@ fun AdminCanteensScreen() {
         if (showDialog) {
             CanteenDialog(
                 canteen = editingCanteen,
-                onDismiss = { showDialog = false }
+                onDismiss = { showDialog = false },
+                onSaved = { refresh() }
             )
         }
     }
 }
 
 @Composable
-fun CanteenDialog(canteen: Canteen?, onDismiss: () -> Unit) {
+fun CanteenDialog(canteen: Canteen?, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(canteen?.name ?: "") }
+    var isSaving by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -131,66 +168,106 @@ fun CanteenDialog(canteen: Canteen?, onDismiss: () -> Unit) {
             )
         },
         confirmButton = {
-            Button(onClick = {
-                if (canteen == null) {
-                    val id = (Database.canteens.maxOfOrNull { it.id } ?: 0) + 1
-                    Database.canteens.add(Canteen(id, name))
-                } else {
-                    val index = Database.canteens.indexOf(canteen)
-                    if (index != -1) Database.canteens[index] = canteen.copy(name = name)
+            Button(
+                enabled = !isSaving && name.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        if (canteen == null) {
+                            MySQLDatabase.addCanteen(name)
+                        } else {
+                            MySQLDatabase.updateCanteen(canteen.id, name)
+                        }
+                        isSaving = false
+                        onSaved()
+                        onDismiss()
+                    }
                 }
-                onDismiss()
-            }) { Text("Save") }
+            ) { Text(if (isSaving) "Saving…" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
 @Composable
 fun AdminUsersScreen(isStaff: Boolean) {
-    val users = Database.users.filter { it.isStaff == isStaff && !it.isAdmin }
+    val scope = rememberCoroutineScope()
+    var allUsers by remember { mutableStateOf<List<User>>(emptyList()) }
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
     var editingUser by remember { mutableStateOf<User?>(null) }
 
+    LaunchedEffect(Unit) {
+        allUsers = MySQLDatabase.getAllUsers()
+        canteens = MySQLDatabase.getAllCanteens()
+        isLoading = false
+    }
+
+    fun refresh() {
+        scope.launch {
+            isLoading = true
+            allUsers = MySQLDatabase.getAllUsers()
+            isLoading = false
+        }
+    }
+
+    val users = allUsers.filter { it.isStaff == isStaff && !it.isAdmin }
+
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { 
+            FloatingActionButton(onClick = {
                 editingUser = null
-                showDialog = true 
+                showDialog = true
             }) {
                 Icon(Icons.Default.Add, contentDescription = "Add User")
             }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(users) { user ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(user.name, style = MaterialTheme.typography.titleMedium)
-                            Text("ID: ${user.rollNo}", style = MaterialTheme.typography.bodySmall)
-                            if (isStaff) {
-                                val canteenName = Database.canteens.find { it.id == user.canteenId }?.name ?: "No Canteen"
-                                Text("Canteen: $canteenName", style = MaterialTheme.typography.labelSmall)
+        if (isLoading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.padding(padding).fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(users) { user ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(user.name, style = MaterialTheme.typography.titleMedium)
+                                Text("ID: ${user.rollNo}", style = MaterialTheme.typography.bodySmall)
+                                if (isStaff) {
+                                    val canteenName = canteens.find { it.id == user.canteenId }?.name ?: "No Canteen"
+                                    Text("Canteen: $canteenName", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
-                        }
-                        Row {
-                            IconButton(onClick = { 
-                                editingUser = user
-                                showDialog = true 
-                            }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit")
-                            }
-                            IconButton(onClick = { Database.users.remove(user) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                            Row {
+                                IconButton(onClick = {
+                                    editingUser = user
+                                    showDialog = true
+                                }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        MySQLDatabase.deleteUser(user.rollNo)
+                                        refresh()
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                }
                             }
                         }
                     }
@@ -202,7 +279,9 @@ fun AdminUsersScreen(isStaff: Boolean) {
             UserDialog(
                 user = editingUser,
                 isStaff = isStaff,
-                onDismiss = { showDialog = false }
+                canteens = canteens,
+                onDismiss = { showDialog = false },
+                onSaved = { refresh() }
             )
         }
     }
@@ -210,12 +289,20 @@ fun AdminUsersScreen(isStaff: Boolean) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UserDialog(user: User?, isStaff: Boolean, onDismiss: () -> Unit) {
+fun UserDialog(
+    user: User?,
+    isStaff: Boolean,
+    canteens: List<Canteen>,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(user?.name ?: "") }
     var rollNo by remember { mutableStateOf(user?.rollNo ?: "") }
     var password by remember { mutableStateOf(user?.password ?: "") }
-    var canteenId by remember { mutableStateOf(user?.canteenId ?: Database.canteens.firstOrNull()?.id ?: 0) }
+    var canteenId by remember { mutableStateOf(user?.canteenId ?: canteens.firstOrNull()?.id ?: 0) }
     var expanded by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -223,16 +310,22 @@ fun UserDialog(user: User?, isStaff: Boolean, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                OutlinedTextField(value = rollNo, onValueChange = { rollNo = it }, label = { Text("ID / Roll No") })
+                OutlinedTextField(
+                    value = rollNo,
+                    onValueChange = { rollNo = it },
+                    label = { Text("ID / Roll No") },
+                    // Roll No is the primary key — lock it when editing
+                    enabled = user == null
+                )
                 OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") })
-                
+
                 if (isStaff) {
                     ExposedDropdownMenuBox(
                         expanded = expanded,
                         onExpandedChange = { expanded = !expanded }
                     ) {
                         OutlinedTextField(
-                            value = Database.canteens.find { it.id == canteenId }?.name ?: "Select Canteen",
+                            value = canteens.find { it.id == canteenId }?.name ?: "Select Canteen",
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Canteen") },
@@ -243,7 +336,7 @@ fun UserDialog(user: User?, isStaff: Boolean, onDismiss: () -> Unit) {
                             expanded = expanded,
                             onDismissRequest = { expanded = false }
                         ) {
-                            Database.canteens.forEach { canteen ->
+                            canteens.forEach { canteen ->
                                 DropdownMenuItem(
                                     text = { Text(canteen.name) },
                                     onClick = {
@@ -258,29 +351,63 @@ fun UserDialog(user: User?, isStaff: Boolean, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val newUser = User(name, rollNo, password, isStaff = isStaff, canteenId = if (isStaff) canteenId else null)
-                if (user == null) {
-                    Database.users.add(newUser)
-                } else {
-                    val index = Database.users.indexOf(user)
-                    if (index != -1) Database.users[index] = newUser
+            Button(
+                enabled = !isSaving && name.isNotBlank() && rollNo.isNotBlank() && password.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        val newUser = User(
+                            name = name,
+                            rollNo = rollNo,
+                            password = password,
+                            isStaff = isStaff,
+                            canteenId = if (isStaff) canteenId else null
+                        )
+                        if (user == null) {
+                            MySQLDatabase.addUser(newUser)
+                        } else {
+                            MySQLDatabase.updateUser(newUser)
+                        }
+                        isSaving = false
+                        onSaved()
+                        onDismiss()
+                    }
                 }
-                onDismiss()
-            }) { Text("Save") }
+            ) { Text(if (isSaving) "Saving…" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
+// ---------------------------------------------------------------------------
+// All Food (read-only overview for admin)
+// ---------------------------------------------------------------------------
+
 @Composable
 fun AdminAllFoodScreen() {
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    var foodItems by remember { mutableStateOf<List<FoodItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        canteens = MySQLDatabase.getAllCanteens()
+        foodItems = MySQLDatabase.getAllFoodItems()
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Database.canteens.forEach { canteen ->
+        canteens.forEach { canteen ->
             item {
                 Text(
                     text = canteen.name,
@@ -289,7 +416,7 @@ fun AdminAllFoodScreen() {
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-            val items = Database.foodItems.filter { it.canteenId == canteen.id }
+            val items = foodItems.filter { it.canteenId == canteen.id }
             items(items) { food ->
                 StaffFoodItemWidget(food) // Reusing the staff widget
             }
@@ -297,6 +424,10 @@ fun AdminAllFoodScreen() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Nav destinations
+// ---------------------------------------------------------------------------
 
 enum class AdminDestinations(val label: String, val icon: ImageVector) {
     CANTEENS("Canteens", Icons.Default.Store),

@@ -19,142 +19,143 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
 import com.example.canteenappv2.ui.*
+import com.example.canteenappv2.database.MySQLDatabase
 import com.example.canteenappv2.ui.theme.CanteenAppV2Theme
+import kotlinx.coroutines.launch
+import android.util.Log
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
         val settingsPref = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val authPref = getSharedPreferences("auth", Context.MODE_PRIVATE)
-        
-        // Load users into Database on startup
-        val usersStr = authPref.getString("all_users", null)
-        if (usersStr != null) {
-            val loadedUsers = usersStr.split("|").filter { it.isNotBlank() }.mapNotNull {
-                val parts = it.split(";")
-                if (parts.size >= 3) {
-                    User(
-                        parts[0], 
-                        parts[1], 
-                        parts[2], 
-                        isStaff = parts.getOrNull(3)?.toBoolean() ?: false,
-                        isAdmin = parts.getOrNull(5)?.toBoolean() ?: false,
-                        canteenId = parts.getOrNull(4)?.toIntOrNull()
-                    )
-                } else null
-            }
-            if (loadedUsers.isNotEmpty()) {
-                Database.users.clear()
-                Database.users.addAll(loadedUsers)
-            }
-        }
-
-        fun saveUsers() {
-            val usersStr = Database.users.joinToString("|") { 
-                "${it.name};${it.rollNo};${it.password};${it.isStaff};${it.canteenId ?: ""};${it.isAdmin}" 
-            }
-            authPref.edit().putString("all_users", usersStr).apply()
-        }
 
         setContent {
-            var currentUser by remember { 
-                val rollNo = authPref.getString("roll_no", null)
-                val initialUser = Database.users.find { it.rollNo == rollNo }
-                mutableStateOf(initialUser)
-            }
-            
-            var darkThemePreference by remember { 
+            var currentUser by remember { mutableStateOf<User?>(null) }
+            var isConnecting by remember { mutableStateOf(true) }
+
+            var darkThemePreference by remember {
                 mutableStateOf(
                     if (settingsPref.contains("dark_theme")) {
                         settingsPref.getBoolean("dark_theme", false)
                     } else {
                         null
                     }
-                ) 
+                )
             }
-            
+
             val useDarkTheme = darkThemePreference ?: isSystemInDarkTheme()
+            val scope = rememberCoroutineScope()
+
+            // Connect to MySQL, then restore the saved session if any
+            LaunchedEffect(Unit) {
+                val connected = MySQLDatabase.connect()
+                if (connected) {
+                    Log.d("Database", "Connected to MySQL successfully")
+                    // Restore previously logged-in user from the saved roll_no
+                    val savedRollNo = authPref.getString("roll_no", null)
+                    if (savedRollNo != null) {
+                        currentUser = MySQLDatabase.getUserByRollNo(savedRollNo)
+                    }
+                } else {
+                    Log.e("Database", "MySQL connection failed")
+                }
+                isConnecting = false
+            }
+
+            DisposableEffect(Unit) {
+                onDispose { MySQLDatabase.disconnect() }
+            }
 
             CanteenAppV2Theme(darkTheme = useDarkTheme) {
-                if (currentUser == null) {
+                if (isConnecting) {
+                    // Show a simple splash while the DB connects
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                } else if (currentUser == null) {
                     var showSignUp by remember { mutableStateOf(false) }
                     if (showSignUp) {
                         SignUpScreen(
-                            onSignUpSuccess = { signedUpRollNo, name, password ->
-                                val newUser = User(name, signedUpRollNo, password)
-                                Database.users.add(newUser)
-                                saveUsers()
-                                currentUser = newUser
-                                authPref.edit().putString("roll_no", signedUpRollNo).apply()
+                            onSignUpSuccess = { rollNo, name, password ->
+                                scope.launch {
+                                    val newUser = User(name, rollNo, password)
+                                    val added = MySQLDatabase.addUser(newUser)
+                                    if (added) {
+                                        currentUser = newUser
+                                        authPref.edit().putString("roll_no", rollNo).apply()
+                                    } else {
+                                        Log.e("SignUp", "Failed to insert user into MySQL")
+                                    }
+                                }
                             },
                             onNavigateToLogin = { showSignUp = false }
                         )
                     } else {
                         LoginScreen(
-                            onLoginSuccess = { loggedInRollNo, _ ->
-                                currentUser = Database.users.find { it.rollNo == loggedInRollNo }
-                                authPref.edit().putString("roll_no", loggedInRollNo).apply()
+                            onLoginSuccess = { rollNo, _ ->
+                                scope.launch {
+                                    val user = MySQLDatabase.getUserByRollNo(rollNo)
+                                    if (user != null) {
+                                        currentUser = user
+                                        authPref.edit().putString("roll_no", rollNo).apply()
+                                    }
+                                }
                             },
-                            onNavigateToSignUp = { showSignUp = true },
-                            users = Database.users
+                            onNavigateToSignUp = { showSignUp = true }
                         )
                     }
                 } else {
                     when {
-                        currentUser!!.isAdmin -> {
-                            AdminApp(
-                                user = currentUser!!,
-                                darkTheme = useDarkTheme,
-                                onDarkThemeChange = { isDark -> 
-                                    darkThemePreference = isDark
-                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                                },
-                                onLogout = {
-                                    currentUser = null
-                                    authPref.edit().remove("roll_no").apply()
-                                }
-                            )
-                        }
-                        currentUser!!.isStaff -> {
-                            StaffApp(
-                                user = currentUser!!,
-                                darkTheme = useDarkTheme,
-                                onDarkThemeChange = { isDark -> 
-                                    darkThemePreference = isDark
-                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                                },
-                                onLogout = {
-                                    currentUser = null
-                                    authPref.edit().remove("roll_no").apply()
-                                }
-                            )
-                        }
-                        else -> {
-                            CanteenAppV2App(
-                                user = currentUser!!,
-                                darkTheme = useDarkTheme,
-                                onDarkThemeChange = { isDark -> 
-                                    darkThemePreference = isDark
-                                    settingsPref.edit().putBoolean("dark_theme", isDark).apply()
-                                },
-                                onLogout = {
-                                    currentUser = null
-                                    authPref.edit().remove("roll_no").apply()
-                                }
-                            )
-                        }
+                        currentUser!!.isAdmin -> AdminApp(
+                            user = currentUser!!,
+                            darkTheme = useDarkTheme,
+                            onDarkThemeChange = { isDark ->
+                                darkThemePreference = isDark
+                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                            },
+                            onLogout = {
+                                currentUser = null
+                                authPref.edit().remove("roll_no").apply()
+                            }
+                        )
+                        currentUser!!.isStaff -> StaffApp(
+                            user = currentUser!!,
+                            darkTheme = useDarkTheme,
+                            onDarkThemeChange = { isDark ->
+                                darkThemePreference = isDark
+                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                            },
+                            onLogout = {
+                                currentUser = null
+                                authPref.edit().remove("roll_no").apply()
+                            }
+                        )
+                        else -> CanteenAppV2App(
+                            user = currentUser!!,
+                            darkTheme = useDarkTheme,
+                            onDarkThemeChange = { isDark ->
+                                darkThemePreference = isDark
+                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                            },
+                            onLogout = {
+                                currentUser = null
+                                authPref.edit().remove("roll_no").apply()
+                            }
+                        )
                     }
                 }
-            }
-            
-            // Auto-save users whenever the list changes (optional but good for this structure)
-            LaunchedEffect(Database.users.size) {
-                saveUsers()
             }
         }
     }
@@ -169,8 +170,8 @@ fun CanteenAppV2App(
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.CANTEENS) }
     var cartItems by remember { mutableStateOf(listOf<CartItem>()) }
-    val orders = Database.orders
-    
+    val scope = rememberCoroutineScope()
+
     var persistentSelectedCanteen by remember { mutableStateOf<Canteen?>(null) }
     var persistentSelectedFoodItem by remember { mutableStateOf<FoodItem?>(null) }
 
@@ -187,16 +188,25 @@ fun CanteenAppV2App(
         }
     }
 
-    fun confirmOrder(canteenName: String, items: List<CartItem>): Int {
-        val token = Database.getNextToken()
-        val newOrder = OrderItem(
-            token = token,
-            items = items,
-            canteenName = canteenName
-        )
-        Database.orders.add(newOrder)
-        cartItems = cartItems.filter { it.foodItem.canteenId != items.first().foodItem.canteenId }
-        return token
+    // confirmOrder now writes to MySQL and returns the token.
+    // It is called from CartScreen via onConfirmOrder, which expects a synchronous Int return.
+    // We use a Composable-level scope so the suspend calls run properly, and return the token
+    // via a shared mutable state that CartScreen reads after the coroutine completes.
+    // To keep the CartScreen contract (onConfirmOrder: (String, List<CartItem>) -> Int) intact
+    // we make confirmOrder suspend and lift it up using a callback pattern instead.
+    // CartScreen's onConfirmOrder lambda is now a suspend lambda.
+    suspend fun confirmOrder(canteenName: String, items: List<CartItem>): Int {
+        val canteenId = items.first().foodItem.canteenId
+        val token = MySQLDatabase.getNextToken()
+        val success = MySQLDatabase.addOrder(token, items, canteenId, canteenName)
+        return if (success) {
+            // Remove only the items belonging to the ordered canteen from the cart
+            cartItems = cartItems.filter { it.foodItem.canteenId != canteenId }
+            token
+        } else {
+            Log.e("Order", "Failed to save order to MySQL")
+            -1 // signals failure; CartScreen should handle -1 gracefully
+        }
     }
 
     NavigationSuiteScaffold(
@@ -225,12 +235,15 @@ fun CanteenAppV2App(
                 AppDestinations.CART -> CartScreen(
                     modifier = Modifier.padding(innerPadding),
                     cartItems = cartItems,
-                    onConfirmOrder = ::confirmOrder,
+                    onConfirmOrder = { canteenName, items ->
+                        // confirmOrder is suspend; CartScreen calls this inside a coroutine scope
+                        confirmOrder(canteenName, items)
+                    },
                     onDone = { currentDestination = AppDestinations.CANTEENS }
                 )
                 AppDestinations.WAITLIST -> WaitlistScreen(
-                    modifier = Modifier.padding(innerPadding),
-                    orders = orders
+                    modifier = Modifier.padding(innerPadding)
+                    // No orders parameter — WaitlistScreen now self-fetches from MySQL
                 )
                 AppDestinations.SETTINGS -> SettingsScreen(
                     modifier = Modifier.padding(innerPadding),

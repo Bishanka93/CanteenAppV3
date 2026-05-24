@@ -15,24 +15,33 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.canteenappv2.database.MySQLDatabase
+import kotlinx.coroutines.launch
 
 @Composable
 fun CartScreen(
     modifier: Modifier = Modifier,
     cartItems: List<CartItem>,
-    onConfirmOrder: (String, List<CartItem>) -> Int,
+    onConfirmOrder: suspend (String, List<CartItem>) -> Int,
     onDone: () -> Unit
 ) {
     var cartStep by remember { mutableIntStateOf(1) }
     var orderToken by remember { mutableIntStateOf(0) }
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    val scope = rememberCoroutineScope()
 
-    // Group items by canteenId
+    // LaunchedEffect already runs in a coroutine — no scope.launch needed
+    LaunchedEffect(Unit) {
+        canteens = MySQLDatabase.getAllCanteens()
+    }
+
     val groupedItems = remember(cartItems) {
         cartItems.groupBy { it.foodItem.canteenId }
     }
-    
-    val canteensInCart = remember(groupedItems) {
-        groupedItems.keys.mapNotNull { id -> Database.canteens.find { it.id == id } }
+
+    // canteens is now in the key so this recomputes once the DB call resolves
+    val canteensInCart = remember(groupedItems, canteens) {
+        groupedItems.keys.mapNotNull { id -> canteens.find { it.id == id } }
     }
 
     var selectedCanteenId by remember(canteensInCart) {
@@ -53,9 +62,12 @@ fun CartScreen(
             modifier = modifier
         )
         2 -> ConfirmationLayout(
-            onConfirm = { 
-                orderToken = onConfirmOrder(selectedCanteenName, selectedCanteenItems)
-                cartStep = 3 
+            onConfirm = {
+                scope.launch {
+                    val token = onConfirmOrder(selectedCanteenName, selectedCanteenItems)
+                    orderToken = token
+                    cartStep = 3
+                }
             },
             onBack = { cartStep = 1 },
             modifier = modifier
@@ -86,7 +98,12 @@ fun CartItemsLayout(
         topBar = { TopAppBar(title = { Text("Your Cart", fontWeight = FontWeight.Bold) }) },
         modifier = modifier
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .padding(16.dp)
+                .fillMaxSize()
+        ) {
             if (items.isEmpty()) {
                 Column(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -150,7 +167,11 @@ fun CartItemsLayout(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(item.foodItem.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        item.foodItem.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                     Text("Qty: ${item.quantity}", style = MaterialTheme.typography.bodyMedium)
                                 }
                                 Text(
@@ -163,7 +184,7 @@ fun CartItemsLayout(
                         }
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -174,7 +195,11 @@ fun CartItemsLayout(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Subtotal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Subtotal",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                             Text(
                                 "Rs ${String.format("%.2f", totalPrice)}",
                                 style = MaterialTheme.typography.titleLarge,
@@ -186,15 +211,19 @@ fun CartItemsLayout(
                         Text("Canteen: $canteenName", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
-                    onClick = onContinue, 
+                    onClick = onContinue,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     enabled = selectedItems.isNotEmpty(),
                     shape = MaterialTheme.shapes.large
                 ) {
-                    Text("Continue with this Order", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Continue with this Order",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 if (canteensInCart.size > 1) {
@@ -219,7 +248,7 @@ fun ConfirmationLayout(
     modifier: Modifier = Modifier
 ) {
     Scaffold(
-        topBar = { 
+        topBar = {
             TopAppBar(
                 title = { Text("Confirmation", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
@@ -227,24 +256,27 @@ fun ConfirmationLayout(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
-            ) 
+            )
         },
         modifier = modifier
     ) { padding ->
         Column(
-            modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize(),
+            modifier = Modifier
+                .padding(padding)
+                .padding(16.dp)
+                .fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Confirm your order details?", 
+                "Confirm your order details?",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(32.dp))
             Button(
-                onClick = onConfirm, 
+                onClick = onConfirm,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = MaterialTheme.shapes.large
             ) {
@@ -265,14 +297,16 @@ fun ConfirmationLayout(
 @Composable
 fun DoneLayout(token: Int, onFinish: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             Icons.Default.CheckCircle,
             contentDescription = "Success",
-            tint = Color(0xFF4CAF50), // Green for success
+            tint = Color(0xFF4CAF50),
             modifier = Modifier.size(120.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))

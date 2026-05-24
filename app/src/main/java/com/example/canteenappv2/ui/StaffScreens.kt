@@ -28,6 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.example.canteenappv2.database.MySQLDatabase
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3AdaptiveNavigationSuiteApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -38,7 +41,13 @@ fun StaffApp(
     onLogout: () -> Unit
 ) {
     var currentDestination by remember { mutableStateOf(StaffDestinations.ORDERS) }
-    val canteen = Database.canteens.find { it.id == user.canteenId } ?: Database.canteens[0]
+    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        canteens = MySQLDatabase.getAllCanteens()
+    }
+
+    val canteen = canteens.find { it.id == user.canteenId }
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
@@ -58,16 +67,19 @@ fun StaffApp(
                     title = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(currentDestination.label, fontWeight = FontWeight.Bold)
-                            Text(canteen.name, style = MaterialTheme.typography.labelSmall)
+                            canteen?.let {
+                                Text(it.name, style = MaterialTheme.typography.labelSmall)
+                            }
                         }
                     }
                 )
             }
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
+                val canteenId = user.canteenId ?: 1
                 when (currentDestination) {
-                    StaffDestinations.FOOD -> StaffFoodScreen(user.canteenId!!)
-                    StaffDestinations.ORDERS -> StaffOrdersScreen(user.canteenId!!)
+                    StaffDestinations.FOOD -> StaffFoodScreen(canteenId)
+                    StaffDestinations.ORDERS -> StaffOrdersScreen(canteenId)
                     StaffDestinations.SETTINGS -> SettingsScreen(
                         user = user,
                         darkTheme = darkTheme,
@@ -82,8 +94,15 @@ fun StaffApp(
 
 @Composable
 fun StaffFoodScreen(canteenId: Int) {
-    val foodItems = Database.foodItems.filter { it.canteenId == canteenId }
     var showAddDialog by remember { mutableStateOf(false) }
+    var foodItems by remember { mutableStateOf<List<FoodItem>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    fun refresh() {
+        scope.launch { foodItems = MySQLDatabase.getFoodItemsByCanteen(canteenId) }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
 
     Scaffold(
         floatingActionButton = {
@@ -98,21 +117,29 @@ fun StaffFoodScreen(canteenId: Int) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(foodItems, key = { it.id }) { item ->
-                StaffFoodItemWidget(item)
+                StaffFoodItemWidget(item, onRefresh = { refresh() })
             }
         }
 
         if (showAddDialog) {
-            AddFoodDialog(canteenId = canteenId, onDismiss = { showAddDialog = false })
+            AddFoodDialog(
+                canteenId = canteenId,
+                onDismiss = { showAddDialog = false },
+                onRefresh = { refresh() }
+            )
         }
     }
 }
 
+/**
+ * [onRefresh] is optional so this widget can be reused read-only in AdminAllFoodScreen.
+ */
 @Composable
-fun StaffFoodItemWidget(item: FoodItem) {
+fun StaffFoodItemWidget(item: FoodItem, onRefresh: (() -> Unit)? = null) {
     var showEditDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    
+    val scope = rememberCoroutineScope()
+
     val imageModel = remember(item.imageName) {
         if (item.imageName?.startsWith("content://") == true) {
             Uri.parse(item.imageName)
@@ -125,8 +152,8 @@ fun StaffFoodItemWidget(item: FoodItem) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (item.isAvailable) MaterialTheme.colorScheme.surfaceVariant 
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = if (item.isAvailable) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
     ) {
         Row(
@@ -142,9 +169,9 @@ fun StaffFoodItemWidget(item: FoodItem) {
                     .background(MaterialTheme.colorScheme.secondaryContainer),
                 contentScale = ContentScale.Crop
             )
-            
+
             Spacer(modifier = Modifier.width(16.dp))
-            
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Rs ${item.price}", style = MaterialTheme.typography.bodyMedium)
@@ -154,39 +181,44 @@ fun StaffFoodItemWidget(item: FoodItem) {
                     style = MaterialTheme.typography.labelSmall
                 )
             }
-            
-            Column(horizontalAlignment = Alignment.End) {
-                Switch(
-                    checked = item.isAvailable,
-                    onCheckedChange = { 
-                        val index = Database.foodItems.indexOfFirst { it.id == item.id }
-                        if (index != -1) Database.foodItems[index] = item.copy(isAvailable = it)
-                    },
-                    modifier = Modifier.scale(0.8f)
-                )
-                IconButton(onClick = { showEditDialog = true }) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+
+            // Controls only shown when an onRefresh callback is provided (i.e. staff context)
+            if (onRefresh != null) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Switch(
+                        checked = item.isAvailable,
+                        onCheckedChange = { available ->
+                            scope.launch {
+                                if (MySQLDatabase.updateFoodItemAvailability(item.id, available)) {
+                                    onRefresh()
+                                }
+                            }
+                        },
+                        modifier = Modifier.scale(0.8f)
+                    )
+                    IconButton(onClick = { showEditDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    }
                 }
             }
         }
     }
 
-    if (showEditDialog) {
-        EditFoodDialog(item = item, onDismiss = { showEditDialog = false })
+    if (showEditDialog && onRefresh != null) {
+        EditFoodDialog(item = item, onDismiss = { showEditDialog = false }, onRefresh = onRefresh)
     }
 }
 
 @Composable
-fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit) {
+fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit, onRefresh: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    
+    val scope = rememberCoroutineScope()
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        imageUri = uri
-    }
+    ) { uri: Uri? -> imageUri = uri }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -217,11 +249,13 @@ fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Name") }, modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = price, 
-                    onValueChange = { price = it }, 
+                    value = price, onValueChange = { price = it },
                     label = { Text("Price") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -230,13 +264,16 @@ fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(
+                enabled = name.isNotBlank() && price.isNotBlank(),
                 onClick = {
                     val p = price.toDoubleOrNull() ?: 0.0
-                    val id = (Database.foodItems.maxOfOrNull { it.id } ?: 0) + 1
-                    Database.foodItems.add(FoodItem(id, name, p, canteenId, imageUri?.toString()))
-                    onDismiss()
-                },
-                enabled = name.isNotBlank() && price.isNotBlank()
+                    scope.launch {
+                        if (MySQLDatabase.addFoodItem(name, p, canteenId, imageUri?.toString())) {
+                            onRefresh()
+                            onDismiss()
+                        }
+                    }
+                }
             ) { Text("Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -244,17 +281,16 @@ fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit) {
+fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit, onRefresh: () -> Unit) {
     var name by remember { mutableStateOf(item.name) }
     var price by remember { mutableStateOf(item.price.toString()) }
     var imageUriString by remember { mutableStateOf(item.imageName) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) imageUriString = uri.toString()
-    }
+    ) { uri: Uri? -> if (uri != null) imageUriString = uri.toString() }
 
     val imageModel = remember(imageUriString) {
         if (imageUriString?.startsWith("content://") == true) {
@@ -300,11 +336,13 @@ fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Name") }, modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = price, 
-                    onValueChange = { price = it }, 
+                    value = price, onValueChange = { price = it },
                     label = { Text("Price") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -313,15 +351,17 @@ fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(onClick = {
-                val index = Database.foodItems.indexOfFirst { it.id == item.id }
-                if (index != -1) {
-                    Database.foodItems[index] = item.copy(
-                        name = name, 
-                        price = price.toDoubleOrNull() ?: item.price,
-                        imageName = imageUriString
-                    )
+                scope.launch {
+                    if (MySQLDatabase.updateFoodItem(
+                            item.id, name,
+                            price.toDoubleOrNull() ?: item.price,
+                            imageUriString
+                        )
+                    ) {
+                        onRefresh()
+                        onDismiss()
+                    }
                 }
-                onDismiss()
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -330,8 +370,23 @@ fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit) {
 
 @Composable
 fun StaffOrdersScreen(canteenId: Int) {
-    val canteenName = Database.canteens.find { it.id == canteenId }?.name ?: ""
-    val orders = Database.orders.filter { it.canteenName == canteenName && it.status != OrderStatus.COMPLETED }
+    var orders by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    fun refresh() {
+        scope.launch {
+            // Filter by this canteen AND exclude completed orders
+            orders = MySQLDatabase.getAllOrders(canteenId = canteenId)
+                .filter { it.status != OrderStatus.COMPLETED }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            refresh()
+            delay(3000)
+        }
+    }
 
     if (orders.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -344,23 +399,30 @@ fun StaffOrdersScreen(canteenId: Int) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(orders) { order ->
-                StaffOrderWidget(order)
+                StaffOrderWidget(order, onRefresh = { refresh() })
             }
         }
     }
 }
 
 @Composable
-fun StaffOrderWidget(order: OrderItem) {
+fun StaffOrderWidget(order: OrderItem, onRefresh: () -> Unit) {
+    val scope = rememberCoroutineScope()
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Token: ${order.token}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                
-                val statusColor = when(order.status) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Token: ${order.token}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                val statusColor = when (order.status) {
                     OrderStatus.PENDING -> MaterialTheme.colorScheme.error
                     OrderStatus.PREPARING -> Color(0xFFFFA000)
                     OrderStatus.READY -> Color(0xFF4CAF50)
@@ -368,46 +430,51 @@ fun StaffOrderWidget(order: OrderItem) {
                 }
                 Text(order.status.name, color = statusColor, fontWeight = FontWeight.Bold)
             }
-            
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            
-            order.items.forEach { 
+
+            order.items.forEach {
                 Text("${it.foodItem.name} x ${it.quantity}", style = MaterialTheme.typography.bodyLarge)
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 when (order.status) {
-                    OrderStatus.PENDING -> {
-                        Button(onClick = { updateOrderStatus(order, OrderStatus.PREPARING) }, modifier = Modifier.weight(1f)) {
-                            Text("Start Preparing")
-                        }
-                    }
-                    OrderStatus.PREPARING -> {
-                        Button(onClick = { updateOrderStatus(order, OrderStatus.READY) }, modifier = Modifier.weight(1f)) {
-                            Text("Mark Ready")
-                        }
-                    }
-                    OrderStatus.READY -> {
-                        Button(onClick = { 
-                            updateOrderStatus(order, OrderStatus.COMPLETED)
-                            Database.releaseToken(order.token)
-                        }, modifier = Modifier.weight(1f)) {
-                            Text("Complete Order")
-                        }
-                    }
+                    OrderStatus.PENDING -> Button(
+                        onClick = {
+                            scope.launch {
+                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.PREPARING)) onRefresh()
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Start Preparing") }
+
+                    OrderStatus.PREPARING -> Button(
+                        onClick = {
+                            scope.launch {
+                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.READY)) onRefresh()
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Mark Ready") }
+
+                    OrderStatus.READY -> Button(
+                        onClick = {
+                            scope.launch {
+                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.COMPLETED)) onRefresh()
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Complete Order") }
+
                     else -> {}
                 }
             }
         }
-    }
-}
-
-fun updateOrderStatus(order: OrderItem, newStatus: OrderStatus) {
-    val index = Database.orders.indexOf(order)
-    if (index != -1) {
-        Database.orders[index] = order.copy(status = newStatus)
     }
 }
 

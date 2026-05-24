@@ -12,16 +12,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import android.util.Log
+import com.example.canteenappv2.database.MySQLDatabase
 
 @Composable
 fun LoginScreen(
     onLoginSuccess: (String, String) -> Unit,
-    onNavigateToSignUp: () -> Unit,
-    users: List<User>
+    onNavigateToSignUp: () -> Unit
 ) {
     var rollNo by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -101,11 +105,21 @@ fun LoginScreen(
 
             Button(
                 onClick = {
-                    val user = users.find { it.rollNo == rollNo && it.password == password }
-                    if (user != null) {
-                        onLoginSuccess(user.rollNo, user.name)
-                    } else {
-                        errorMessage = "Invalid Roll Number or Password"
+                    scope.launch {
+                        try {
+                            val user = MySQLDatabase.getUserByRollNo(rollNo)
+                            if (user != null && user.password == password) {
+                                Log.d("LOGIN", "Login successful")
+                                onLoginSuccess(user.rollNo, user.name)
+                            } else {
+                                errorMessage = "Invalid Roll Number or Password"
+                                Log.e("LOGIN", "Invalid credentials")
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            errorMessage = "Database error"
+                            Log.e("LOGIN", "Database exception: ${e.message}")
+                        }
                     }
                 },
                 modifier = Modifier
@@ -149,6 +163,7 @@ fun SignUpScreen(
     var rollNo by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -234,8 +249,42 @@ fun SignUpScreen(
 
             Button(
                 onClick = {
-                    if (name.isNotBlank() && rollNo.isNotBlank() && password.length >= 6) {
-                        onSignUpSuccess(rollNo, name, password)
+                    if (name.isNotBlank() &&
+                        rollNo.isNotBlank() &&
+                        password.length >= 6
+                    ) {
+                        scope.launch {
+                            try {
+                                val existingUser =
+                                    MySQLDatabase.getUserByRollNo(rollNo)
+                                if (existingUser != null) {
+                                    showError = true
+                                } else {
+                                    val newUser = User(
+                                        name = name,
+                                        rollNo = rollNo,
+                                        password = password,
+                                        isStaff = false,
+                                        isAdmin = false,
+                                        canteenId = null
+                                    )
+                                    val success =
+                                        MySQLDatabase.addUser(newUser)
+                                    if (success) {
+                                        onSignUpSuccess(
+                                            rollNo,
+                                            name,
+                                            password
+                                        )
+                                    } else {
+                                        showError = true
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                showError = true
+                            }
+                        }
                     } else {
                         showError = true
                     }

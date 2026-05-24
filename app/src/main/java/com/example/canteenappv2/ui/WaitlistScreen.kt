@@ -5,28 +5,53 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.canteenappv2.database.MySQLDatabase
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WaitlistScreen(modifier: Modifier = Modifier, orders: List<OrderItem>) {
+fun WaitlistScreen(modifier: Modifier = Modifier) {
+    var orders by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
+
+    // Poll all non-completed orders every 3 seconds so the list stays live
+    LaunchedEffect(Unit) {
+        while (true) {
+            orders = MySQLDatabase.getAllOrders()
+                .filter { it.status != OrderStatus.COMPLETED }
+            delay(3000)
+        }
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("Wait List", fontWeight = FontWeight.Bold) }) },
         modifier = modifier
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            reverseLayout = true // Pile from bottom up
-        ) {
-            items(orders) { order ->
-                OrderWidget(order)
+        if (orders.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No active orders", style = MaterialTheme.typography.bodyLarge)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                reverseLayout = true
+            ) {
+                items(orders) { order ->
+                    OrderWidget(order)
+                }
             }
         }
     }
@@ -37,9 +62,7 @@ fun OrderWidget(order: OrderItem) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -89,12 +112,9 @@ fun OrderWidget(order: OrderItem) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Text(cartItem.foodItem.name, style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = cartItem.foodItem.name,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        text = "x ${cartItem.quantity}",
+                        "x ${cartItem.quantity}",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold
                     )
