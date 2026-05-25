@@ -14,7 +14,7 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WaitlistScreen(modifier: Modifier = Modifier) {
+fun WaitlistScreen(modifier: Modifier = Modifier, currentUserRollNo: String) {
     var orders by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -49,7 +49,7 @@ fun WaitlistScreen(modifier: Modifier = Modifier) {
                 reverseLayout = true
             ) {
                 items(orders) { order ->
-                    OrderWidget(order)
+                    OrderWidget(order, currentUserRollNo)
                 }
             }
         }
@@ -57,7 +57,7 @@ fun WaitlistScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun OrderWidget(order: OrderItem) {
+fun OrderWidget(order: OrderItem, currentUserRollNo: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -75,6 +75,20 @@ fun OrderWidget(order: OrderItem) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    if (order.userRollNo == currentUserRollNo) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                "Your Order",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                     Text(
                         text = order.canteenName,
                         style = MaterialTheme.typography.labelMedium,

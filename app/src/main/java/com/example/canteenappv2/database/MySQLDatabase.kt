@@ -339,10 +339,17 @@ object MySQLDatabase {
         val orders = mutableListOf<OrderItem>()
         try {
             val conn = getConnection() ?: return@withContext orders
+
+            // Step 1: collect all order rows into memory first — do NOT call getOrderItems
+            // while this ResultSet is still open (single connection can't handle two
+            // simultaneous operations).
+            data class OrderRow(val id: Int, val token: Int, val status: String, val canteenName: String, val userRollNo: String)
+            val rows = mutableListOf<OrderRow>()
+
             val sql = if (canteenId != null) {
-                "SELECT id, token, canteen_id, canteen_name, status FROM orders WHERE canteen_id = ?"
+                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders WHERE canteen_id = ?"
             } else {
-                "SELECT id, token, canteen_id, canteen_name, status FROM orders"
+                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders"
             }
 
             val resultSet = if (canteenId != null) {
@@ -354,17 +361,28 @@ object MySQLDatabase {
             }
 
             while (resultSet.next()) {
-                val orderId = resultSet.getInt("id")
+                rows.add(OrderRow(
+                    id = resultSet.getInt("id"),
+                    token = resultSet.getInt("token"),
+                    status = resultSet.getString("status"),
+                    canteenName = resultSet.getString("canteen_name"),
+                    userRollNo = resultSet.getString("user_roll_no") ?: ""
+                ))
+            }
+            resultSet.close()
+
+            // Step 2: now that the ResultSet is closed, fetch items for each order safely
+            rows.forEach { row ->
                 orders.add(
                     OrderItem(
-                        token = resultSet.getInt("token"),
-                        items = getOrderItems(orderId),
-                        status = OrderStatus.valueOf(resultSet.getString("status")),
-                        canteenName = resultSet.getString("canteen_name")
+                        token = row.token,
+                        items = getOrderItems(row.id),
+                        status = OrderStatus.valueOf(row.status),
+                        canteenName = row.canteenName,
+                        userRollNo = row.userRollNo
                     )
                 )
             }
-            resultSet.close()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -407,14 +425,15 @@ object MySQLDatabase {
         items
     }
 
-    suspend fun addOrder(token: Int, items: List<CartItem>, canteenId: Int, canteenName: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun addOrder(token: Int, items: List<CartItem>, canteenId: Int, canteenName: String, rollNo: String = ""): Boolean = withContext(Dispatchers.IO) {
         try {
             val conn = getConnection() ?: return@withContext false
-            val orderSql = "INSERT INTO orders (token, canteen_id, canteen_name, status) VALUES (?, ?, ?, 'PENDING')"
+            val orderSql = "INSERT INTO orders (token, canteen_id, canteen_name, status, user_roll_no) VALUES (?, ?, ?, 'PENDING', ?)"
             val orderStatement = conn.prepareStatement(orderSql, Statement.RETURN_GENERATED_KEYS)
             orderStatement.setInt(1, token)
             orderStatement.setInt(2, canteenId)
             orderStatement.setString(3, canteenName)
+            orderStatement.setString(4, rollNo)
             orderStatement.executeUpdate()
             val keys = orderStatement.generatedKeys
             val orderId = if (keys.next()) keys.getInt(1) else return@withContext false

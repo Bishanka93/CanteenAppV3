@@ -21,7 +21,8 @@ data class OrderItem(
     val token: Int,
     val items: List<CartItem>,
     var status: OrderStatus = OrderStatus.PENDING,
-    val canteenName: String
+    val canteenName: String,
+    val userRollNo: String = ""
 )
 
 data class User(

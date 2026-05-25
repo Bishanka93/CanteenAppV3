@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
                                 scope.launch {
                                     val user = MySQLDatabase.getUserByRollNo(rollNo)
                                     if (user != null) {
+                                        currentUser = user
                                         authPref.edit { putString("roll_no", rollNo) }
                                     }
                                 }
@@ -152,6 +153,7 @@ class MainActivity : ComponentActivity() {
                                 settingsPref.edit { putBoolean("dark_theme", isDark) }
                             },
                             onLogout = {
+                                currentUser = null
                                 authPref.edit { remove("roll_no") }
                             }
                         )
@@ -191,7 +193,7 @@ fun CanteenAppV2App(
     suspend fun confirmOrder(canteenName: String, items: List<CartItem>): Int {
         val canteenId = items.first().foodItem.canteenId
         val token = MySQLDatabase.getNextToken()
-        val success = MySQLDatabase.addOrder(token, items, canteenId, canteenName)
+        val success = MySQLDatabase.addOrder(token, items, canteenId, canteenName, user.rollNo)
         return if (success) {
             // Remove only the items belonging to the ordered canteen from the cart
             cartItems = cartItems.filter { it.foodItem.canteenId != canteenId }
@@ -234,7 +236,8 @@ fun CanteenAppV2App(
                     onDone = { currentDestination = AppDestinations.CANTEENS }
                 )
                 AppDestinations.WAITLIST -> WaitlistScreen(
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier.padding(innerPadding),
+                    currentUserRollNo = user.rollNo
                     // No orders parameter — WaitlistScreen now self-fetches from MySQL
                 )
                 AppDestinations.SETTINGS -> SettingsScreen(

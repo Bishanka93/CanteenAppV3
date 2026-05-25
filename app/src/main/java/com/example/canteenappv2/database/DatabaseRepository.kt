@@ -37,10 +37,10 @@ class DatabaseRepository {
     suspend fun registerUser(user: User): Boolean {
         return MySQLDatabase.addUser(user)
     }
-    
-    suspend fun placeOrder(items: List<CartItem>, canteenId: Int, canteenName: String): Int? {
+
+    suspend fun placeOrder(items: List<CartItem>, canteenId: Int, canteenName: String, rollNo: String): Int? {
         val token = MySQLDatabase.getNextToken()
-        val success = MySQLDatabase.addOrder(token, items, canteenId, canteenName)
+        val success = MySQLDatabase.addOrder(token, items, canteenId, canteenName, rollNo)
         return if (success) token else null
     }
     

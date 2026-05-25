@@ -16,7 +16,7 @@ object DatabaseConfig {
     /** Special alias that reaches your PC's localhost from the Android Emulator. */
     private const val EMULATOR_HOST   = "10.0.2.2"
 
-    const val HOTSPOT_PC_IP = "10.0.2.2 "
+    const val HOTSPOT_PC_IP = "10.0.2.2"
 
     // ── Connection Pool ───────────────────────────────────────────────────────
     //const val MAX_POOL_SIZE          = 5
