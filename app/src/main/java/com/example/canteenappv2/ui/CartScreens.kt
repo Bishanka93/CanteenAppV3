@@ -1,6 +1,5 @@
 package com.example.canteenappv2.ui
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +23,7 @@ fun CartScreen(
     modifier: Modifier = Modifier,
     cartItems: List<CartItem>,
     onConfirmOrder: suspend (String, List<CartItem>) -> Int,
+    onClearCart: () -> Unit,
     onDone: () -> Unit
 ) {
     var cartStep by remember { mutableIntStateOf(1) }
@@ -71,6 +71,10 @@ fun CartScreen(
                 }
             },
             onBack = { cartStep = 1 },
+            onCancel = {
+                onClearCart()
+                onDone() // navigate back to canteens
+            },
             modifier = modifier
         )
         3 -> DoneLayout(
@@ -81,7 +85,6 @@ fun CartScreen(
     }
 }
 
-@SuppressLint("DefaultLocale")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CartItemsLayout(
@@ -247,6 +250,7 @@ fun CartItemsLayout(
 fun ConfirmationLayout(
     onConfirm: () -> Unit,
     onBack: () -> Unit,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -286,9 +290,15 @@ fun ConfirmationLayout(
             }
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(
-                onClick = onBack,
+                onClick = onCancel,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = MaterialTheme.shapes.large
+                shape = MaterialTheme.shapes.large,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                ),
+                border = ButtonDefaults.outlinedButtonBorder.copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error)
+                )
             ) {
                 Text("Cancel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }

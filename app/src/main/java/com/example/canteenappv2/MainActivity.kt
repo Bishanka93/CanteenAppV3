@@ -233,7 +233,8 @@ fun CanteenAppV2App(
                     onConfirmOrder = { canteenName, items ->
                         confirmOrder(canteenName, items)
                     },
-                    onDone = { currentDestination = AppDestinations.CANTEENS }
+                    onDone = { currentDestination = AppDestinations.CANTEENS },
+                    onClearCart = { cartItems = emptyList() }
                 )
                 AppDestinations.WAITLIST -> WaitlistScreen(
                     modifier = Modifier.padding(innerPadding),
