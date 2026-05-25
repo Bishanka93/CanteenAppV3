@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS orders (
     status VARCHAR(50) DEFAULT 'PENDING',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    user_roll_no VARCHAR(50),
     FOREIGN KEY (canteen_id) REFERENCES canteens(id)
 );
 -- Order Details Table (for items in each order)
