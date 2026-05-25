@@ -1,6 +1,5 @@
 package com.example.canteenappv2
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,21 +21,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import com.example.canteenappv2.ui.*
 import com.example.canteenappv2.database.MySQLDatabase
 import com.example.canteenappv2.ui.theme.CanteenAppV2Theme
 import kotlinx.coroutines.launch
 import android.util.Log
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
+
+    // Reconnect when the app comes back from background (screen off, switch apps, etc.)
+    override fun onResume() {
+        super.onResume()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val settingsPref = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val authPref = getSharedPreferences("auth", Context.MODE_PRIVATE)
+        val settingsPref = getSharedPreferences("settings", MODE_PRIVATE)
+        val authPref = getSharedPreferences("auth", MODE_PRIVATE)
 
         setContent {
             var currentUser by remember { mutableStateOf<User?>(null) }
@@ -93,8 +98,7 @@ class MainActivity : ComponentActivity() {
                                     val newUser = User(name, rollNo, password)
                                     val added = MySQLDatabase.addUser(newUser)
                                     if (added) {
-                                        currentUser = newUser
-                                        authPref.edit().putString("roll_no", rollNo).apply()
+                                        authPref.edit { putString("roll_no", rollNo) }
                                     } else {
                                         Log.e("SignUp", "Failed to insert user into MySQL")
                                     }
@@ -108,8 +112,7 @@ class MainActivity : ComponentActivity() {
                                 scope.launch {
                                     val user = MySQLDatabase.getUserByRollNo(rollNo)
                                     if (user != null) {
-                                        currentUser = user
-                                        authPref.edit().putString("roll_no", rollNo).apply()
+                                        authPref.edit { putString("roll_no", rollNo) }
                                     }
                                 }
                             },
@@ -123,11 +126,11 @@ class MainActivity : ComponentActivity() {
                             darkTheme = useDarkTheme,
                             onDarkThemeChange = { isDark ->
                                 darkThemePreference = isDark
-                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                settingsPref.edit { putBoolean("dark_theme", isDark) }
                             },
                             onLogout = {
                                 currentUser = null
-                                authPref.edit().remove("roll_no").apply()
+                                authPref.edit { remove("roll_no") }
                             }
                         )
                         currentUser!!.isStaff -> StaffApp(
@@ -135,23 +138,21 @@ class MainActivity : ComponentActivity() {
                             darkTheme = useDarkTheme,
                             onDarkThemeChange = { isDark ->
                                 darkThemePreference = isDark
-                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                settingsPref.edit { putBoolean("dark_theme", isDark) }
                             },
                             onLogout = {
                                 currentUser = null
-                                authPref.edit().remove("roll_no").apply()
+                                authPref.edit { remove("roll_no") }
                             }
                         )
                         else -> CanteenAppV2App(
                             user = currentUser!!,
                             darkTheme = useDarkTheme,
                             onDarkThemeChange = { isDark ->
-                                darkThemePreference = isDark
-                                settingsPref.edit().putBoolean("dark_theme", isDark).apply()
+                                settingsPref.edit { putBoolean("dark_theme", isDark) }
                             },
                             onLogout = {
-                                currentUser = null
-                                authPref.edit().remove("roll_no").apply()
+                                authPref.edit { remove("roll_no") }
                             }
                         )
                     }
@@ -170,7 +171,6 @@ fun CanteenAppV2App(
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.CANTEENS) }
     var cartItems by remember { mutableStateOf(listOf<CartItem>()) }
-    val scope = rememberCoroutineScope()
 
     var persistentSelectedCanteen by remember { mutableStateOf<Canteen?>(null) }
     var persistentSelectedFoodItem by remember { mutableStateOf<FoodItem?>(null) }
@@ -188,13 +188,6 @@ fun CanteenAppV2App(
         }
     }
 
-    // confirmOrder now writes to MySQL and returns the token.
-    // It is called from CartScreen via onConfirmOrder, which expects a synchronous Int return.
-    // We use a Composable-level scope so the suspend calls run properly, and return the token
-    // via a shared mutable state that CartScreen reads after the coroutine completes.
-    // To keep the CartScreen contract (onConfirmOrder: (String, List<CartItem>) -> Int) intact
-    // we make confirmOrder suspend and lift it up using a callback pattern instead.
-    // CartScreen's onConfirmOrder lambda is now a suspend lambda.
     suspend fun confirmOrder(canteenName: String, items: List<CartItem>): Int {
         val canteenId = items.first().foodItem.canteenId
         val token = MySQLDatabase.getNextToken()
@@ -236,7 +229,6 @@ fun CanteenAppV2App(
                     modifier = Modifier.padding(innerPadding),
                     cartItems = cartItems,
                     onConfirmOrder = { canteenName, items ->
-                        // confirmOrder is suspend; CartScreen calls this inside a coroutine scope
                         confirmOrder(canteenName, items)
                     },
                     onDone = { currentDestination = AppDestinations.CANTEENS }

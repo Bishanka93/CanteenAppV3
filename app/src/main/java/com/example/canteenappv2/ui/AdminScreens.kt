@@ -300,7 +300,7 @@ fun UserDialog(
     var name by remember { mutableStateOf(user?.name ?: "") }
     var rollNo by remember { mutableStateOf(user?.rollNo ?: "") }
     var password by remember { mutableStateOf(user?.password ?: "") }
-    var canteenId by remember { mutableStateOf(user?.canteenId ?: canteens.firstOrNull()?.id ?: 0) }
+    var canteenId by remember { mutableIntStateOf(user?.canteenId ?: canteens.firstOrNull()?.id ?: 0) }
     var expanded by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -314,7 +314,6 @@ fun UserDialog(
                     value = rollNo,
                     onValueChange = { rollNo = it },
                     label = { Text("ID / Roll No") },
-                    // Roll No is the primary key — lock it when editing
                     enabled = user == null
                 )
                 OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") })

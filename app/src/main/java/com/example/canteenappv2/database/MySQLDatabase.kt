@@ -25,10 +25,10 @@ object MySQLDatabase {
                 DatabaseConfig.DB_USER,
                 DatabaseConfig.DB_PASSWORD
             )
+            Log.d("MySQL", "Connected to ${DatabaseConfig.resolveHost()}:${DatabaseConfig.DB_PORT}")
             connection != null
         } catch (e: Exception) {
-            e.printStackTrace()
-            Log.e("MySQL", "Connection Error: ${e.message}")
+            Log.e("MySQL", "Connection failed to ${DatabaseConfig.resolveHost()}: ${e.message}")
             false
         }
     }
@@ -42,8 +42,33 @@ object MySQLDatabase {
         }
     }
 
-    private fun getConnection(): Connection? {
-        return if (connection != null && !connection!!.isClosed) connection else null
+    /**
+     * Returns a live connection, reconnecting automatically if the link dropped.
+     * Common on mobile/hotspot where the OS kills idle sockets.
+     */
+    private suspend fun getConnection(): Connection? = withContext(Dispatchers.IO) {
+        val conn = connection
+        val alive = try {
+            conn != null && !conn.isClosed && conn.isValid(3)
+        } catch (_: Exception) { false }
+        if (!alive) {
+            Log.w("MySQL", "Connection lost — reconnecting…")
+            try { connection?.close() } catch (_: Exception) {}
+            connection = null
+            try {
+                Class.forName("com.mysql.jdbc.Driver")
+                connection = DriverManager.getConnection(
+                    DatabaseConfig.getJdbcUrl(),
+                    DatabaseConfig.DB_USER,
+                    DatabaseConfig.DB_PASSWORD
+                )
+                Log.d("MySQL", "Reconnected successfully")
+            } catch (e: Exception) {
+                Log.e("MySQL", "Reconnect failed: ${e.message}")
+                return@withContext null
+            }
+        }
+        connection
     }
 
     // -------------------------------------------------------------------------

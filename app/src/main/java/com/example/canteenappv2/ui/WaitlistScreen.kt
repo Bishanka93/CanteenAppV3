@@ -17,7 +17,6 @@ import kotlinx.coroutines.delay
 fun WaitlistScreen(modifier: Modifier = Modifier) {
     var orders by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
 
-    // Poll all non-completed orders every 3 seconds so the list stays live
     LaunchedEffect(Unit) {
         while (true) {
             orders = MySQLDatabase.getAllOrders()

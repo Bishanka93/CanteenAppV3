@@ -1,5 +1,6 @@
 package com.example.canteenappv2.ui
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +32,7 @@ import coil3.compose.AsyncImage
 import com.example.canteenappv2.database.MySQLDatabase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3AdaptiveNavigationSuiteApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +136,7 @@ fun StaffFoodScreen(canteenId: Int) {
 /**
  * [onRefresh] is optional so this widget can be reused read-only in AdminAllFoodScreen.
  */
+@SuppressLint("DiscouragedApi")
 @Composable
 fun StaffFoodItemWidget(item: FoodItem, onRefresh: (() -> Unit)? = null) {
     var showEditDialog by remember { mutableStateOf(false) }
@@ -142,7 +145,7 @@ fun StaffFoodItemWidget(item: FoodItem, onRefresh: (() -> Unit)? = null) {
 
     val imageModel = remember(item.imageName) {
         if (item.imageName?.startsWith("content://") == true) {
-            Uri.parse(item.imageName)
+            item.imageName!!.toUri()
         } else {
             val resId = context.resources.getIdentifier(item.imageName, "drawable", context.packageName)
             if (resId != 0) resId else null
@@ -280,6 +283,7 @@ fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit, onRefresh: () -> Unit) 
     )
 }
 
+@SuppressLint("DiscouragedApi")
 @Composable
 fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit, onRefresh: () -> Unit) {
     var name by remember { mutableStateOf(item.name) }
@@ -294,7 +298,7 @@ fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit, onRefresh: () -> Unit)
 
     val imageModel = remember(imageUriString) {
         if (imageUriString?.startsWith("content://") == true) {
-            Uri.parse(imageUriString)
+            imageUriString!!.toUri()
         } else {
             val resId = context.resources.getIdentifier(imageUriString, "drawable", context.packageName)
             if (resId != 0) resId else null

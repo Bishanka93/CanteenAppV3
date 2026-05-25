@@ -4,7 +4,6 @@
 -- Create Database
 CREATE DATABASE IF NOT EXISTS canteen_app;
 USE canteen_app;
-
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -17,14 +16,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (canteen_id) REFERENCES canteens(id)
 );
-
 -- Canteens Table
 CREATE TABLE IF NOT EXISTS canteens (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 -- Food Items Table
 CREATE TABLE IF NOT EXISTS food_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -36,7 +33,6 @@ CREATE TABLE IF NOT EXISTS food_items (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (canteen_id) REFERENCES canteens(id)
 );
-
 -- Order Items Table
 CREATE TABLE IF NOT EXISTS orders (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -48,7 +44,6 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (canteen_id) REFERENCES canteens(id)
 );
-
 -- Order Details Table (for items in each order)
 CREATE TABLE IF NOT EXISTS order_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -60,7 +55,6 @@ CREATE TABLE IF NOT EXISTS order_items (
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (food_item_id) REFERENCES food_items(id)
 );
-
 -- Token Management Table
 CREATE TABLE IF NOT EXISTS available_tokens (
     id INT PRIMARY KEY AUTO_INCREMENT,
