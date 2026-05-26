@@ -162,7 +162,9 @@ fun SignUpScreen(
     var name by remember { mutableStateOf("") }
     var rollNo by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf(false) }
+    var confirmPassword by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Surface(
@@ -188,7 +190,10 @@ fun SignUpScreen(
 
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = { 
+                    name = it
+                    errorMessage = null
+                },
                 label = { Text("Full Name") },
                 placeholder = { 
                     Text(
@@ -198,13 +203,17 @@ fun SignUpScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium
+                shape = MaterialTheme.shapes.medium,
+                enabled = !isLoading
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = rollNo,
-                onValueChange = { rollNo = it },
+                onValueChange = { 
+                    rollNo = it
+                    errorMessage = null
+                },
                 label = { Text("Roll Number") },
                 placeholder = { 
                     Text(
@@ -215,13 +224,17 @@ fun SignUpScreen(
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium
+                shape = MaterialTheme.shapes.medium,
+                enabled = !isLoading
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = { 
+                    password = it
+                    errorMessage = null
+                },
                 label = { Text("Create Password") },
                 placeholder = { 
                     Text(
@@ -233,12 +246,35 @@ fun SignUpScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium
+                shape = MaterialTheme.shapes.medium,
+                enabled = !isLoading
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = { 
+                    confirmPassword = it
+                    errorMessage = null
+                },
+                label = { Text("Confirm Password") },
+                placeholder = { 
+                    Text(
+                        text = "Confirm your password",
+                        color = Color.Gray
+                    ) 
+                },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                enabled = !isLoading
             )
             
-            if (showError) {
+            if (errorMessage != null) {
                 Text(
-                    text = "Please fill in all details correctly.",
+                    text = errorMessage!!,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp)
@@ -249,56 +285,64 @@ fun SignUpScreen(
 
             Button(
                 onClick = {
-                    if (name.isNotBlank() &&
-                        rollNo.isNotBlank() &&
-                        password.length >= 6
-                    ) {
-                        scope.launch {
-                            try {
-                                val existingUser =
-                                    MySQLDatabase.getUserByRollNo(rollNo)
-                                if (existingUser != null) {
-                                    showError = true
-                                } else {
-                                    val newUser = User(
-                                        name = name,
-                                        rollNo = rollNo,
-                                        password = password,
-                                        isStaff = false,
-                                        isAdmin = false,
-                                        canteenId = null
-                                    )
-                                    val success =
-                                        MySQLDatabase.addUser(newUser)
-                                    if (success) {
-                                        onSignUpSuccess(
-                                            rollNo,
-                                            name,
-                                            password
-                                        )
+                    when {
+                        name.isBlank() -> errorMessage = "Please enter your full name"
+                        rollNo.isBlank() -> errorMessage = "Please enter your roll number"
+                        password.length < 6 -> errorMessage = "Password must be at least 6 characters"
+                        password != confirmPassword -> errorMessage = "Passwords do not match"
+                        else -> {
+                            isLoading = true
+                            scope.launch {
+                                try {
+                                    val existingUser = MySQLDatabase.getUserByRollNo(rollNo)
+                                    if (existingUser != null) {
+                                        errorMessage = "Roll number already registered. Please login instead."
+                                        isLoading = false
                                     } else {
-                                        showError = true
+                                        val newUser = User(
+                                            name = name,
+                                            rollNo = rollNo,
+                                            password = password,
+                                            isStaff = false,
+                                            isAdmin = false,
+                                            canteenId = null
+                                        )
+                                        val success = MySQLDatabase.addUser(newUser)
+                                        if (success) {
+                                            Log.d("SignUp", "User registered successfully: $rollNo")
+                                            onSignUpSuccess(rollNo, name, password)
+                                        } else {
+                                            errorMessage = "Registration failed. Please try again."
+                                            isLoading = false
+                                        }
                                     }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    errorMessage = "Error: ${e.message}"
+                                    isLoading = false
                                 }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                showError = true
                             }
                         }
-                    } else {
-                        showError = true
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = MaterialTheme.shapes.large
+                shape = MaterialTheme.shapes.large,
+                enabled = !isLoading
             ) {
-                Text(
-                    text = "Sign Up",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text(
+                        text = "Sign Up",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

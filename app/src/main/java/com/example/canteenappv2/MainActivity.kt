@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
             var isConnecting by remember { mutableStateOf(true) }
 
             var darkThemePreference by remember {
-                mutableStateOf(
+                mutableStateOf<Boolean?>(
                     if (settingsPref.contains("dark_theme")) {
                         settingsPref.getBoolean("dark_theme", false)
                     } else {
@@ -95,12 +95,14 @@ class MainActivity : ComponentActivity() {
                         SignUpScreen(
                             onSignUpSuccess = { rollNo, name, password ->
                                 scope.launch {
-                                    val newUser = User(name, rollNo, password)
-                                    val added = MySQLDatabase.addUser(newUser)
-                                    if (added) {
+                                    // Fetch the newly created user (it was already added in LoginScreen)
+                                    val newUser = MySQLDatabase.getUserByRollNo(rollNo)
+                                    if (newUser != null) {
+                                        currentUser = newUser
                                         authPref.edit { putString("roll_no", rollNo) }
+                                        Log.d("SignUp", "User logged in successfully after signup: $rollNo")
                                     } else {
-                                        Log.e("SignUp", "Failed to insert user into MySQL")
+                                        Log.e("SignUp", "Failed to fetch newly created user: $rollNo")
                                     }
                                 }
                             },
@@ -150,6 +152,7 @@ class MainActivity : ComponentActivity() {
                             user = currentUser!!,
                             darkTheme = useDarkTheme,
                             onDarkThemeChange = { isDark ->
+                                darkThemePreference = isDark
                                 settingsPref.edit { putBoolean("dark_theme", isDark) }
                             },
                             onLogout = {

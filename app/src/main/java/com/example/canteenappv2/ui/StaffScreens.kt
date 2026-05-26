@@ -1,6 +1,5 @@
 package com.example.canteenappv2.ui
 
-import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -9,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -32,7 +32,6 @@ import coil3.compose.AsyncImage
 import com.example.canteenappv2.database.MySQLDatabase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3AdaptiveNavigationSuiteApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -136,7 +135,6 @@ fun StaffFoodScreen(canteenId: Int) {
 /**
  * [onRefresh] is optional so this widget can be reused read-only in AdminAllFoodScreen.
  */
-@SuppressLint("DiscouragedApi")
 @Composable
 fun StaffFoodItemWidget(item: FoodItem, onRefresh: (() -> Unit)? = null) {
     var showEditDialog by remember { mutableStateOf(false) }
@@ -145,7 +143,7 @@ fun StaffFoodItemWidget(item: FoodItem, onRefresh: (() -> Unit)? = null) {
 
     val imageModel = remember(item.imageName) {
         if (item.imageName?.startsWith("content://") == true) {
-            item.imageName!!.toUri()
+            Uri.parse(item.imageName)
         } else {
             val resId = context.resources.getIdentifier(item.imageName, "drawable", context.packageName)
             if (resId != 0) resId else null
@@ -283,7 +281,6 @@ fun AddFoodDialog(canteenId: Int, onDismiss: () -> Unit, onRefresh: () -> Unit) 
     )
 }
 
-@SuppressLint("DiscouragedApi")
 @Composable
 fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit, onRefresh: () -> Unit) {
     var name by remember { mutableStateOf(item.name) }
@@ -298,7 +295,7 @@ fun EditFoodDialog(item: FoodItem, onDismiss: () -> Unit, onRefresh: () -> Unit)
 
     val imageModel = remember(imageUriString) {
         if (imageUriString?.startsWith("content://") == true) {
-            imageUriString!!.toUri()
+            Uri.parse(imageUriString)
         } else {
             val resId = context.resources.getIdentifier(imageUriString, "drawable", context.packageName)
             if (resId != 0) resId else null
@@ -402,30 +399,58 @@ fun StaffOrdersScreen(canteenId: Int) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(orders) { order ->
-                StaffOrderWidget(order, onRefresh = { refresh() })
+            itemsIndexed(orders) { index, order ->
+                StaffOrderWidget(
+                    order = order,
+                    isFirst = index == 0,
+                    onRefresh = { refresh() }
+                )
             }
         }
     }
 }
 
 @Composable
-fun StaffOrderWidget(order: OrderItem, onRefresh: () -> Unit) {
+fun StaffOrderWidget(order: OrderItem, isFirst: Boolean, onRefresh: () -> Unit) {
     val scope = rememberCoroutineScope()
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isFirst) 6.dp else 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isFirst) MaterialTheme.colorScheme.surface
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Token: ${order.token}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Token: ${order.token}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (isFirst) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                "NEXT",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
                 val statusColor = when (order.status) {
                     OrderStatus.PENDING -> MaterialTheme.colorScheme.error
                     OrderStatus.PREPARING -> Color(0xFFFFA000)
@@ -443,40 +468,49 @@ fun StaffOrderWidget(order: OrderItem, onRefresh: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                when (order.status) {
-                    OrderStatus.PENDING -> Button(
-                        onClick = {
-                            scope.launch {
-                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.PREPARING)) onRefresh()
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Start Preparing") }
+            if (isFirst) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when (order.status) {
+                        OrderStatus.PENDING -> Button(
+                            onClick = {
+                                scope.launch {
+                                    if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.PREPARING)) onRefresh()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Start Preparing") }
 
-                    OrderStatus.PREPARING -> Button(
-                        onClick = {
-                            scope.launch {
-                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.READY)) onRefresh()
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Mark Ready") }
+                        OrderStatus.PREPARING -> Button(
+                            onClick = {
+                                scope.launch {
+                                    if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.READY)) onRefresh()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Mark Ready") }
 
-                    OrderStatus.READY -> Button(
-                        onClick = {
-                            scope.launch {
-                                if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.COMPLETED)) onRefresh()
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Complete Order") }
+                        OrderStatus.READY -> Button(
+                            onClick = {
+                                scope.launch {
+                                    if (MySQLDatabase.updateOrderStatus(order.token, OrderStatus.COMPLETED)) onRefresh()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Complete Order") }
 
-                    else -> {}
+                        else -> {}
+                    }
                 }
+            } else {
+                // Queued orders show their position but no actionable buttons
+                Text(
+                    "Waiting in queue",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

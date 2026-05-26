@@ -339,17 +339,13 @@ object MySQLDatabase {
         val orders = mutableListOf<OrderItem>()
         try {
             val conn = getConnection() ?: return@withContext orders
-
-            // Step 1: collect all order rows into memory first — do NOT call getOrderItems
-            // while this ResultSet is still open (single connection can't handle two
-            // simultaneous operations).
             data class OrderRow(val id: Int, val token: Int, val status: String, val canteenName: String, val userRollNo: String)
             val rows = mutableListOf<OrderRow>()
 
             val sql = if (canteenId != null) {
-                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders WHERE canteen_id = ?"
+                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders WHERE canteen_id = ? ORDER BY created_at ASC"
             } else {
-                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders"
+                "SELECT id, token, canteen_id, canteen_name, status, user_roll_no FROM orders ORDER BY created_at ASC"
             }
 
             val resultSet = if (canteenId != null) {
