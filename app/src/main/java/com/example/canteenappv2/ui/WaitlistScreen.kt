@@ -46,7 +46,7 @@ fun WaitlistScreen(modifier: Modifier = Modifier, currentUserRollNo: String) {
                     .fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                reverseLayout = true
+                reverseLayout = false
             ) {
                 items(orders) { order ->
                     OrderWidget(order, currentUserRollNo)
