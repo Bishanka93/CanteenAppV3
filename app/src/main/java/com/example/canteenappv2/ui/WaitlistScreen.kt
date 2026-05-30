@@ -20,7 +20,7 @@ fun WaitlistScreen(modifier: Modifier = Modifier, currentUserRollNo: String) {
     LaunchedEffect(Unit) {
         while (true) {
             orders = MySQLDatabase.getAllOrders()
-                .filter { it.status != OrderStatus.COMPLETED }
+                .filter { it.status != OrderStatus.COMPLETED && it.userRollNo == currentUserRollNo }
             delay(3000)
         }
     }

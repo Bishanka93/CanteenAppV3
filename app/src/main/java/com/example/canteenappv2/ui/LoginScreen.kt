@@ -166,6 +166,7 @@ fun SignUpScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val rollNoRegex = Regex("^DC\\d{4}[A-Z]{2,4}\\d{4}$")
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -288,6 +289,7 @@ fun SignUpScreen(
                     when {
                         name.isBlank() -> errorMessage = "Please enter your full name"
                         rollNo.isBlank() -> errorMessage = "Please enter your roll number"
+                        !rollNoRegex.matches(rollNo) -> errorMessage = "Enter correct roll no format"
                         password.length < 6 -> errorMessage = "Password must be at least 6 characters"
                         password != confirmPassword -> errorMessage = "Passwords do not match"
                         else -> {
